@@ -485,6 +485,7 @@
       state.route = acc.role === 'daehung' ? 'home' : 'cases';
       state.mobileMenuOpen = false;
       state.notifOpen = false;
+      saveSession();
       showToast(`${acc.name}님(${acc.roleLabel})으로 로그인되었습니다.`);
       render();
     }
@@ -493,10 +494,37 @@
       loginWithCredentials(id, '1234');
     }
 
+    function saveSession() {
+      try {
+        if (state.user) {
+          localStorage.setItem('daehung_session', JSON.stringify({
+            user: state.user,
+            route: state.route,
+            activeCaseId: state.activeCaseId
+          }));
+        }
+      } catch (e) {}
+    }
+
+    function restoreSession() {
+      try {
+        const raw = localStorage.getItem('daehung_session');
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        if (parsed && parsed.user && parsed.user.role) {
+          state.user = parsed.user;
+          if (parsed.route) state.route = parsed.route;
+          if (parsed.activeCaseId) state.activeCaseId = parsed.activeCaseId;
+        }
+      } catch (e) {}
+    }
+
     function logout() {
       state.user = null;
       state.notifOpen = false;
+      try { localStorage.removeItem('daehung_session'); } catch (e) {}
       destroyCharts();
+      destroyActiveMap();
       render();
     }
 
@@ -575,6 +603,7 @@
       state.route = routeId;
       state.mobileMenuOpen = false;
       state.notifOpen = false;
+      saveSession();
       render();
     }
 
@@ -3843,6 +3872,7 @@
       if (state.route === 'new_case_wizard' && state.wizardStep === 2) initLocationMap('wz-leaflet-map', state.activeCaseId);
     }
 
+    restoreSession();
     render();
     initSupabaseAndLoad(false);
   </script>
