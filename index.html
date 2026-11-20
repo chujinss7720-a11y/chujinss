@@ -239,6 +239,16 @@
       { key: 'done', name: '종료', short: '종료' }
     ];
 
+    const FACILITY_CATEGORIES = [
+      { id: 'road', name: '도로시설물', icon: 'shield', items: ['볼라드', '가드레일', '중앙분리대', '방음벽', '휀스', '충격흡수대', 'PE방호벽', '경계석', '기타(도로)'] },
+      { id: 'traffic', name: '교통시설물', icon: 'signpost', items: ['신호등', '교통표지판', '반사경', '가로등', '기타(교통)'] },
+      { id: 'landscape', name: '조경시설', icon: 'trees', items: ['가로수', '수목', '화단', '조경시설물', '기타(조경)'] },
+      { id: 'bus', name: '버스정류장 시설물', icon: 'bus', items: ['버스정류장', 'BIT', '기타(정류장)'] },
+      { id: 'building', name: '건축·외부시설물', icon: 'building-2', items: ['대리석', '유리', '담장', '간판', '기타(건축·외부)'] },
+      { id: 'parking', name: '주차장 시설물', icon: 'square-parking', items: ['차단기', '기타(주차장)'] },
+      { id: 'elec', name: '전기·통신시설물', icon: 'zap', items: ['전광판', 'CCTV', '분전함', '신호등제어기', '기타(전기·통신)'] }
+    ];
+
     const state = {
       user: null,
       route: 'cases',
@@ -395,6 +405,12 @@
       if (c.claimMemo === undefined) c.claimMemo = '';
       if (c.completedDate === undefined) c.completedDate = '';
       if (c.workDone === undefined) c.workDone = (c.stage === '04' || c.stage === 'done');
+      if (!c.selectedFacilities) c.selectedFacilities = [c.facility || '가드레일'];
+      if (!c.victims) c.victims = [{ type: '개인', name: c.victimName || '', phone: c.victimPhone || '' }];
+      if (c.detailAddress === undefined) c.detailAddress = '';
+      if (!c.mapPin) c.mapPin = { x: 52, y: 46 };
+      if (!c.mapMode) c.mapMode = 'normal';
+      if (c.mapZoom === undefined) c.mapZoom = 1;
       return c;
     }
 
@@ -2374,11 +2390,12 @@
             ${f.openSec2 ? `
               <div class="space-y-3 mt-4 pt-4 border-t border-slate-100 text-xs">
                 <div>
-                  <label class="block font-semibold mb-1.5">피해 시설물 분류 (복수 선택)</label>
+                  <div class="flex items-center justify-between mb-1.5">
+                    <label class="block font-semibold">피해 시설물 분류 (여러 개 선택 가능)</label>
+                    <button type="button" onclick="openFacilityModal('newCaseForm')" class="px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 font-semibold cursor-pointer">시설물 분류 선택</button>
+                  </div>
                   <div class="flex flex-wrap gap-1.5">
-                    ${['가드레일','방음벽','신호등·지주','가로등','도로표지판','중앙분리대'].map(fac => `
-                      <button type="button" onclick="toggleFacilityChip('${fac}')" class="px-2.5 py-1 rounded-full font-semibold cursor-pointer ${f.selectedFacilities.includes(fac)?'bg-blue-700 text-white':'bg-slate-100 text-slate-600'}">${fac}</button>
-                    `).join('')}
+                    ${f.selectedFacilities.length ? f.selectedFacilities.map(fac => `<span class="px-2.5 py-1 rounded-full bg-blue-700 text-white font-semibold">${escapeHtml(fac)}</span>`).join('') : '<span class="text-slate-400">선택한 시설물이 없습니다</span>'}
                   </div>
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -2432,79 +2449,377 @@
       `;
     }
 
-    function renderNewCaseWizardPage() {
-      const c = ensureCaseDetails(state.cases.find(x => x.id === state.activeCaseId));
-      if (!c) { navigate('cases'); return ''; }
-      const stp = state.wizardStep;
-      const filled = [c.insurerCaseNo, c.insurerPhone, c.title, c.address !== '위치 추후 보완' ? c.address : '', c.victimName, c.accidentDesc].filter(Boolean).length;
+    const facModalState = {
+      target: 'wizard',
+      activeCat: 'road',
+      search: '',
+      selected: []
+    };
 
-      return `
-        <div class="bg-emerald-50 border border-emerald-200 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <div class="text-xs font-bold text-emerald-700">접수번호 ${escapeHtml(c.id)}</div>
-            <h2 class="text-lg font-bold text-emerald-950 mt-0.5">접수됐습니다. 나머지 내용을 적어 주세요</h2>
-            <p class="text-xs text-emerald-800 mt-0.5">6칸 중 <strong>${filled}칸</strong>을 적었습니다. (진행 단계 ${stp} / 4)</p>
-          </div>
-          <button type="button" onclick="navigate('cases')" class="px-3 py-2 rounded-xl bg-white border border-emerald-200 text-xs font-semibold text-emerald-800 cursor-pointer self-start">여기까지만 저장하고 나가기</button>
-        </div>
+    function openFacilityModal(target) {
+      facModalState.target = target;
+      facModalState.activeCat = 'road';
+      facModalState.search = '';
+      if (target === 'newCaseForm') {
+        facModalState.selected = [...state.newCaseForm.selectedFacilities];
+      } else {
+        const c = ensureCaseDetails(state.cases.find(x => x.id === state.activeCaseId));
+        facModalState.selected = c ? [...c.selectedFacilities] : [];
+      }
+      renderFacilityModal();
+    }
 
-        <div class="bg-white rounded-2xl border border-slate-200 p-6 space-y-5">
-          <div class="flex items-center gap-2">
-            ${[1,2,3,4].map(n => `
-              <button type="button" onclick="state.wizardStep=${n}; render();" class="flex-1 py-2 rounded-xl text-xs font-bold cursor-pointer ${stp===n?'bg-blue-700 text-white':'bg-slate-100 text-slate-600'}">${n} / 4 단계</button>
-            `).join('')}
-          </div>
+    function toggleFacModalItem(item) {
+      const idx = facModalState.selected.indexOf(item);
+      if (idx >= 0) facModalState.selected.splice(idx, 1);
+      else facModalState.selected.push(item);
+      renderFacilityModal();
+    }
 
-          ${stp === 1 ? `
-            <div class="space-y-3">
-              <h3 class="text-base font-bold text-slate-900">1 / 4 단계: 무엇이 파손됐나요?</h3>
-              <div><label class="block text-xs font-semibold mb-1">시설물 분류</label><input id="wz-fac" type="text" value="${escapeHtml(c.facility)}" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" /></div>
-              <div><label class="block text-xs font-semibold mb-1">시설물 명칭·피해 내용</label><input id="wz-title" type="text" value="${escapeHtml(c.title)}" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" /></div>
-            </div>
-          ` : stp === 2 ? `
-            <div class="space-y-3">
-              <h3 class="text-base font-bold text-slate-900">2 / 4 단계: 어디인가요?</h3>
-              <div><label class="block text-xs font-semibold mb-1">피해 위치 (주소)</label><input id="wz-addr" type="text" value="${escapeHtml(c.address)}" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" /></div>
-              <div><label class="block text-xs font-semibold mb-1">가해 차량번호</label><input id="wz-plate" type="text" value="${escapeHtml(c.plate)}" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" /></div>
-            </div>
-          ` : stp === 3 ? `
-            <div class="space-y-3">
-              <h3 class="text-base font-bold text-slate-900">3 / 4 단계: 피해자는 누구인가요?</h3>
-              <div><label class="block text-xs font-semibold mb-1">피해자 성명·업체명</label><input id="wz-vname" type="text" value="${escapeHtml(c.victimName || '')}" placeholder="예: 서울시설공단" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" /></div>
-              <div><label class="block text-xs font-semibold mb-1">피해자 연락처</label><input id="wz-vphone" type="text" value="${escapeHtml(c.victimPhone || '')}" placeholder="02-0000-0000" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" /></div>
-            </div>
-          ` : `
-            <div class="space-y-3">
-              <h3 class="text-base font-bold text-slate-900">4 / 4 단계: 더 알려 주실 내용이 있나요?</h3>
-              <textarea id="wz-desc" rows="4" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm">${escapeHtml(c.accidentDesc || '')}</textarea>
-            </div>
-          `}
+    function applyFacilityModal() {
+      if (facModalState.target === 'newCaseForm') {
+        state.newCaseForm.selectedFacilities = [...facModalState.selected];
+      } else {
+        const c = state.cases.find(x => x.id === state.activeCaseId);
+        if (c) {
+          c.selectedFacilities = [...facModalState.selected];
+          if (c.selectedFacilities.length > 0) c.facility = c.selectedFacilities[0];
+          syncCaseToDb(c);
+        }
+      }
+      closeModal();
+      render();
+    }
 
-          <div class="flex justify-between pt-3 border-t border-slate-100">
-            <button type="button" onclick="navigate('cases')" class="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 cursor-pointer">나중에 적기</button>
-            <div class="flex gap-2">
-              <button type="button" onclick="saveWizardStep(${stp}, ${stp < 4 ? 'true' : 'false'})" class="px-5 py-2 rounded-xl bg-blue-700 text-white text-xs font-semibold cursor-pointer">${stp < 4 ? '저장 후 다음 →' : '보완 완료 저장'}</button>
+    function renderFacilityModal() {
+      const q = facModalState.search.trim().toLowerCase();
+      const currentCat = FACILITY_CATEGORIES.find(cat => cat.id === facModalState.activeCat) || FACILITY_CATEGORIES[0];
+      const visibleItems = q
+        ? FACILITY_CATEGORIES.flatMap(cat => cat.items.filter(it => it.toLowerCase().includes(q)).map(it => ({ it, icon: cat.icon, catName: cat.name })))
+        : currentCat.items.map(it => ({ it, icon: currentCat.icon, catName: currentCat.name }));
+
+      const root = document.getElementById('modal-root');
+      root.innerHTML = `
+        <div class="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+          <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden border border-slate-200">
+            <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h3 class="text-base font-bold text-slate-900">피해 시설물 선택</h3>
+                <p class="text-xs text-slate-500 mt-0.5">대분류를 고른 뒤 피해를 입은 시설물을 모두 선택하고 [선택 완료]를 눌러 주세요.</p>
+              </div>
+              <button type="button" onclick="closeModal()" class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer">
+                <i data-lucide="x" class="w-4 h-4"></i>
+              </button>
+            </div>
+
+            <div class="p-4 border-b border-slate-100 space-y-3 bg-slate-50/70">
+              <div class="relative">
+                <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
+                <input type="text" value="${escapeHtml(facModalState.search)}" oninput="facModalState.search=this.value; renderFacilityModal();" placeholder="시설물 이름으로 검색" class="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-600" />
+              </div>
+              <div class="flex flex-wrap gap-1.5">
+                ${FACILITY_CATEGORIES.map(cat => `
+                  <button type="button" onclick="facModalState.activeCat='${cat.id}'; facModalState.search=''; renderFacilityModal();"
+                    class="px-3 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 cursor-pointer ${!q && facModalState.activeCat===cat.id ? 'bg-blue-700 text-white' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-100'}">
+                    <i data-lucide="${cat.icon}" class="w-3.5 h-3.5"></i>
+                    <span>${cat.name} (${cat.items.length})</span>
+                  </button>
+                `).join('')}
+              </div>
+            </div>
+
+            <div class="p-4 overflow-y-auto scrollbar-thin flex-1">
+              <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                ${visibleItems.map(({ it, icon, catName }) => {
+                  const sel = facModalState.selected.includes(it);
+                  return `
+                    <button type="button" onclick="toggleFacModalItem('${it}')"
+                      class="p-3 rounded-xl border text-left transition flex items-center justify-between gap-2 cursor-pointer ${sel ? 'border-blue-600 bg-blue-50 ring-1 ring-blue-600' : 'border-slate-200 bg-white hover:border-blue-300'}">
+                      <div class="flex items-center gap-2.5 min-w-0">
+                        <div class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${sel ? 'bg-blue-700 text-white' : 'bg-slate-100 text-slate-600'}">
+                          <i data-lucide="${icon}" class="w-4 h-4"></i>
+                        </div>
+                        <div class="min-w-0">
+                          <div class="text-xs font-bold text-slate-900 truncate">${escapeHtml(it)}</div>
+                          ${q ? `<div class="text-[10px] text-slate-400 truncate">${escapeHtml(catName)}</div>` : ''}
+                        </div>
+                      </div>
+                      <span class="text-[11px] font-semibold shrink-0 ${sel ? 'text-blue-700' : 'text-slate-400'}">${sel ? '선택됨' : '선택'}</span>
+                    </button>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+
+            <div class="px-5 py-3.5 border-t border-slate-100 bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div class="text-xs text-slate-600 truncate">
+                ${facModalState.selected.length ? `선택됨 (${facModalState.selected.length}): <strong>${escapeHtml(facModalState.selected.join(', '))}</strong>` : '선택한 시설물이 없습니다'}
+              </div>
+              <button type="button" onclick="applyFacilityModal()" class="px-5 py-2 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-semibold shrink-0 cursor-pointer">선택 완료</button>
             </div>
           </div>
         </div>
       `;
+      if (window.lucide) lucide.createIcons();
     }
 
-    function saveWizardStep(stp, goNext) {
-      const c = state.cases.find(x => x.id === state.activeCaseId);
+    let wizardExtraOpen = false;
+    let wizardSummaryOpen = false;
+
+    function addWizardVictim(caseId) {
+      const c = ensureCaseDetails(state.cases.find(x => x.id === caseId));
+      if (c) { c.victims.push({ type: '개인', name: '', phone: '' }); render(); }
+    }
+
+    function updateWizardVictim(caseId, idx, field, val) {
+      const c = ensureCaseDetails(state.cases.find(x => x.id === caseId));
+      if (c && c.victims[idx]) c.victims[idx][field] = val;
+    }
+
+    function handleWizardMapClick(event, caseId) {
+      const el = event.currentTarget;
+      const rect = el.getBoundingClientRect();
+      const x = Math.max(5, Math.min(95, Math.round(((event.clientX - rect.left) / rect.width) * 100)));
+      const y = Math.max(8, Math.min(92, Math.round(((event.clientY - rect.top) / rect.height) * 100)));
+      const c = ensureCaseDetails(state.cases.find(x => x.id === caseId));
+      if (c) { c.mapPin = { x, y }; render(); }
+    }
+
+    function renderNewCaseWizardPage() {
+      const c = ensureCaseDetails(state.cases.find(x => x.id === state.activeCaseId));
+      if (!c) { navigate('cases'); return ''; }
+      const stp = state.wizardStep;
+      const filled = [
+        c.insurerCaseNo, c.insurerPhone,
+        c.selectedFacilities.length ? c.title : '',
+        c.address && c.address !== '위치 추후 보완' ? c.address : '',
+        c.victims[0]?.name, c.accidentDesc
+      ].filter(Boolean).length;
+      const remain = Math.max(0, 6 - filled);
+
+      return `
+        <div class="flex items-center justify-between">
+          <button type="button" onclick="navigate('cases')" class="px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer">← 목록으로</button>
+          <button type="button" onclick="saveWizardStep(${stp}, 'exit')" class="px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer">여기까지만 저장하고 나가기</button>
+        </div>
+
+        <div class="bg-emerald-50 border border-emerald-200 rounded-2xl p-5">
+          <div class="text-xs font-bold text-emerald-700">접수번호 ${escapeHtml(c.id)}</div>
+          <h2 class="text-lg font-bold text-emerald-950 mt-0.5">접수됐습니다. 나머지 내용을 적어 주세요</h2>
+          <p class="text-xs text-emerald-800 mt-1">6칸 중 <strong>${filled}칸</strong>을 적었습니다 · ${remain > 0 ? `${remain}칸만 더 적으면 업체 배정이 빨라집니다` : '필수 보완 입력이 모두 채워졌습니다'}</p>
+          <div class="w-full h-2 rounded-full bg-emerald-100 mt-3 overflow-hidden">
+            <div class="h-full bg-emerald-600 rounded-full transition-all" style="width:${Math.round((filled/6)*100)}%"></div>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 space-y-5">
+          <div class="grid grid-cols-4 gap-2">
+            ${[
+              [1, '1 / 4 단계'],
+              [2, '2 / 4 단계'],
+              [3, '3 / 4 단계'],
+              [4, '4 / 4 단계']
+            ].map(([n, lbl]) => `
+              <button type="button" onclick="saveWizardStep(${stp}, 'jump', ${n})" class="py-2 rounded-xl text-xs font-bold cursor-pointer ${stp===n ? 'bg-blue-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}">${lbl}</button>
+            `).join('')}
+          </div>
+
+          ${stp === 1 ? `
+            <div class="space-y-4">
+              <div>
+                <h3 class="text-base font-bold text-slate-900">1 / 4 단계 — 무엇이 파손됐나요?</h3>
+                <p class="text-xs text-slate-500 mt-0.5">시설물을 고르고 한 줄로 적어 주세요. 복구업체가 맞는 장비를 준비합니다.</p>
+              </div>
+              <div class="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <div class="text-xs font-bold text-slate-800">피해 시설물 분류</div>
+                    <div class="text-[11px] text-slate-500">여러 개 선택 가능</div>
+                  </div>
+                  <button type="button" onclick="openFacilityModal('wizard')" class="px-3.5 py-2 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-semibold cursor-pointer">시설물 분류 선택</button>
+                </div>
+                <div class="flex flex-wrap gap-1.5">
+                  ${c.selectedFacilities.map(fac => `<span class="px-2.5 py-1 rounded-full bg-white border border-blue-200 text-blue-700 text-xs font-semibold">${escapeHtml(fac)}</span>`).join('')}
+                </div>
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-700 mb-1">시설물 명칭·피해 내용</label>
+                <input id="wz-title" type="text" value="${escapeHtml(c.title)}" placeholder="예: 가드레일 2경간 파손" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm" />
+              </div>
+            </div>
+          ` : stp === 2 ? `
+            <div class="space-y-4">
+              <div>
+                <h3 class="text-base font-bold text-slate-900">2 / 4 단계 — 어디인가요?</h3>
+                <p class="text-xs text-slate-500 mt-0.5">주소를 검색하거나, 주소가 없는 곳은 지도를 눌러 핀을 찍어 주세요.</p>
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-700 mb-1">피해 위치 (주소 또는 위치 설명)</label>
+                <div class="flex gap-2">
+                  <input id="wz-addr" type="text" value="${escapeHtml(c.address)}" placeholder="주소 검색 또는 직접 입력 (예: 분당수서로 터널 앞)" class="flex-1 px-3 py-2 rounded-xl border border-slate-200 text-sm" />
+                  <button type="button" onclick="showToast('주소 검색 결과를 지도에 반영했습니다.', 'info'); render();" class="px-3.5 py-2 rounded-xl bg-slate-900 text-white text-xs font-semibold cursor-pointer shrink-0">주소 검색</button>
+                </div>
+                <div class="flex items-center justify-between mt-2">
+                  <button type="button" onclick="document.getElementById('wz-addr').value='서울 강남구 삼성동 159 (현위치)'; render();" class="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer">현재 위치로 지정</button>
+                  <span class="text-[11px] text-slate-400">지도를 눌러 핀을 찍을 수 있습니다.</span>
+                </div>
+              </div>
+              <!-- 인터랙티브 지도 영역 -->
+              <div class="relative h-56 rounded-2xl border border-slate-200 overflow-hidden select-none cursor-crosshair ${c.mapMode === 'satellite' ? 'bg-slate-800' : 'bg-emerald-50'}" onclick="handleWizardMapClick(event, '${c.id}')">
+                <svg class="w-full h-full opacity-40 pointer-events-none" viewBox="0 0 400 200" preserveAspectRatio="none">
+                  <path d="M0 120 Q 120 90, 240 130 T 400 100" stroke="${c.mapMode === 'satellite' ? '#94a3b8' : '#3b82f6'}" stroke-width="6" fill="none" />
+                  <path d="M80 0 L 140 200 M 260 0 L 220 200" stroke="${c.mapMode === 'satellite' ? '#cbd5e1' : '#94a3b8'}" stroke-width="3" fill="none" />
+                </svg>
+                <div class="absolute -translate-x-1/2 -translate-y-full pointer-events-none transition-all" style="left:${c.mapPin.x}%; top:${c.mapPin.y}%;">
+                  <div class="px-2 py-0.5 rounded-md bg-rose-600 text-white text-[10px] font-bold shadow">피해 위치 핀</div>
+                  <div class="w-2.5 h-2.5 bg-rose-600 rotate-45 mx-auto -mt-1"></div>
+                </div>
+                <div class="absolute top-2.5 left-2.5 flex flex-col bg-white rounded-lg border border-slate-200 shadow-xs overflow-hidden" onclick="event.stopPropagation()">
+                  <button type="button" onclick="state.cases.find(x=>x.id==='${c.id}').mapZoom=Math.min(3,(state.cases.find(x=>x.id==='${c.id}').mapZoom||1)+1); render();" class="px-2.5 py-1 text-xs font-bold hover:bg-slate-100 cursor-pointer">+</button>
+                  <button type="button" onclick="state.cases.find(x=>x.id==='${c.id}').mapZoom=Math.max(1,(state.cases.find(x=>x.id==='${c.id}').mapZoom||1)-1); render();" class="px-2.5 py-1 text-xs font-bold border-t border-slate-200 hover:bg-slate-100 cursor-pointer">-</button>
+                </div>
+                <div class="absolute top-2.5 right-2.5 bg-white rounded-lg border border-slate-200 p-1 flex gap-1 text-[11px] font-semibold shadow-xs" onclick="event.stopPropagation()">
+                  <button type="button" onclick="state.cases.find(x=>x.id==='${c.id}').mapMode='normal'; render();" class="px-2 py-1 rounded cursor-pointer ${c.mapMode==='normal'?'bg-blue-700 text-white':'text-slate-600'}">일반 지도</button>
+                  <button type="button" onclick="state.cases.find(x=>x.id==='${c.id}').mapMode='satellite'; render();" class="px-2 py-1 rounded cursor-pointer ${c.mapMode==='satellite'?'bg-blue-700 text-white':'text-slate-600'}">위성 사진</button>
+                </div>
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-700 mb-1">상세 위치 (층·호수·방향 등)</label>
+                <input id="wz-detail-addr" type="text" value="${escapeHtml(c.detailAddress)}" placeholder="예: 터널 입구 오른쪽, 상행선 2차로" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" />
+              </div>
+            </div>
+          ` : stp === 3 ? `
+            <div class="space-y-4">
+              <div class="flex items-center justify-between">
+                <div>
+                  <h3 class="text-base font-bold text-slate-900">3 / 4 단계 — 피해자는 누구인가요?</h3>
+                  <p class="text-xs text-slate-500 mt-0.5">시설 주인이나 관리기관입니다. 복구 일정을 맞출 때 연락합니다.</p>
+                </div>
+                <button type="button" onclick="addWizardVictim('${c.id}')" class="px-3 py-1.5 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-semibold cursor-pointer">+ 피해자 추가</button>
+              </div>
+              <div class="space-y-3">
+                ${c.victims.map((v, idx) => `
+                  <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                    <div>
+                      <label class="block font-semibold mb-1">구분</label>
+                      <select onchange="updateWizardVictim('${c.id}',${idx},'type',this.value)" class="w-full px-2.5 py-2 rounded-lg border border-slate-200 bg-white">
+                        ${['개인','과세사업자','간이과세자','면세사업자'].map(t => `<option ${v.type===t?'selected':''}>${t}</option>`).join('')}
+                      </select>
+                    </div>
+                    <div>
+                      <label class="block font-semibold mb-1">피해자 (성명·업체명)</label>
+                      <input type="text" value="${escapeHtml(v.name)}" oninput="updateWizardVictim('${c.id}',${idx},'name',this.value)" placeholder="예: 성남시청 또는 홍길동" class="w-full px-2.5 py-2 rounded-lg border border-slate-200 bg-white" />
+                    </div>
+                    <div>
+                      <label class="block font-semibold mb-1">연락처</label>
+                      <input type="text" value="${escapeHtml(v.phone)}" oninput="updateWizardVictim('${c.id}',${idx},'phone',this.value)" placeholder="예: 010-1234-5678" class="w-full px-2.5 py-2 rounded-lg border border-slate-200 bg-white" />
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          ` : `
+            <div class="space-y-4">
+              <div>
+                <h3 class="text-base font-bold text-slate-900">4 / 4 단계 — 더 알려 주실 내용이 있나요?</h3>
+                <p class="text-xs text-slate-500 mt-0.5">사고 경위나 급한 조치가 있으면 적어 주세요. 없으면 바로 저장하면 됩니다.</p>
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-700 mb-1">사고 경위·복구 요청 내용</label>
+                <textarea id="wz-desc" rows="3" placeholder="예: 버스가 우회전하다 가드레일을 들이받아 2경간이 휘었습니다." class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm">${escapeHtml(c.accidentDesc || '')}</textarea>
+              </div>
+              <div class="border border-slate-200 rounded-xl overflow-hidden">
+                <button type="button" onclick="wizardExtraOpen=!wizardExtraOpen; render();" class="w-full px-4 py-3 bg-slate-50 flex items-center justify-between text-xs font-bold text-slate-800 cursor-pointer">
+                  <span>${wizardExtraOpen ? '▼' : '▶'} 보험 구분·면책금·차량번호 등 더 적기</span>
+                  <span class="text-blue-700">${wizardExtraOpen ? '접기' : '펼치기'}</span>
+                </button>
+                ${wizardExtraOpen ? `
+                  <div class="p-4 space-y-4 text-xs bg-white border-t border-slate-200">
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div><label class="block font-semibold mb-1">보험사·공제조합</label><input type="text" readonly value="${escapeHtml(c.insurerOrg)}" class="w-full px-2.5 py-2 rounded-lg border border-slate-200 bg-slate-50" /></div>
+                      <div><label class="block font-semibold mb-1">보험 구분</label><select class="w-full px-2.5 py-2 rounded-lg border border-slate-200 bg-white"><option>자동차 대물</option><option>일반배상</option><option>장기배상</option></select></div>
+                      <div><label class="block font-semibold mb-1">손해 구분</label><select class="w-full px-2.5 py-2 rounded-lg border border-slate-200 bg-white"><option>3종 · 자동차 사고</option><option>1종 · 재물·배상 (누수·화재 등)</option></select></div>
+                      <div><label class="block font-semibold mb-1">피해 원인</label><select class="w-full px-2.5 py-2 rounded-lg border border-slate-200 bg-white"><option>차량 충돌</option><option>누수</option><option>화재</option><option>낙하물</option><option>기타</option></select></div>
+                      <div><label class="block font-semibold mb-1">면책금 (원, 선택)</label><input type="number" placeholder="예: 200000" class="w-full px-2.5 py-2 rounded-lg border border-slate-200" /></div>
+                      <div><label class="block font-semibold mb-1">지불보증 범위 (%, 선택)</label><input type="number" value="100" class="w-full px-2.5 py-2 rounded-lg border border-slate-200" /></div>
+                      <div><label class="block font-semibold mb-1">사고 차량번호 (선택)</label><input id="wz-plate" type="text" value="${escapeHtml(c.plate)}" placeholder="예: 경기77바1234" class="w-full px-2.5 py-2 rounded-lg border border-slate-200" /></div>
+                      <div><label class="block font-semibold mb-1">피해시설 관리기관 (선택)</label><input type="text" placeholder="예: 성남시청 도로과" class="w-full px-2.5 py-2 rounded-lg border border-slate-200" /></div>
+                      <div><label class="block font-semibold mb-1">관리기관 연락처 (선택)</label><input type="text" placeholder="예: 031-123-4567" class="w-full px-2.5 py-2 rounded-lg border border-slate-200" /></div>
+                    </div>
+                    <label class="flex items-center gap-2 text-xs text-slate-700 cursor-pointer pt-2 border-t border-slate-100">
+                      <input type="checkbox" class="rounded text-blue-600" />
+                      <span>손해사정 검토 자료를 함께 준비 (필요한 피해현장만 선택)</span>
+                    </label>
+                  </div>
+                ` : ''}
+              </div>
+            </div>
+          `}
+
+          <div class="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-100">
+            <div class="flex gap-2">
+              ${stp > 1 ? `<button type="button" onclick="saveWizardStep(${stp}, 'prev')" class="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 cursor-pointer">← 이전</button>` : ''}
+              <button type="button" onclick="navigate('cases')" class="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-500 cursor-pointer">나중에 적기</button>
+            </div>
+            <button type="button" onclick="saveWizardStep(${stp}, '${stp < 4 ? 'next' : 'done'}')" class="px-5 py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-semibold cursor-pointer">${stp < 4 ? '다음 →' : '저장'}</button>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-slate-200 p-4">
+          <button type="button" onclick="wizardSummaryOpen=!wizardSummaryOpen; render();" class="w-full flex items-center justify-between text-xs font-bold text-slate-700 cursor-pointer">
+            <span>접수할 때 적은 내용 (접수번호·전화번호·첨부)</span>
+            <span class="text-blue-700">${wizardSummaryOpen ? '접기' : '펼치기'}</span>
+          </button>
+          ${wizardSummaryOpen ? `
+            <div class="mt-3 pt-3 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs text-slate-600">
+              <div>접수번호: <strong>${escapeHtml(c.insurerCaseNo || c.id)}</strong></div>
+              <div>담당자 연락처: <strong>${escapeHtml(c.insurerPhone)}</strong></div>
+              <div>첨부파일: <strong>${(c.photos.docs || []).length}건</strong></div>
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }
+
+    function saveWizardStep(stp, action = 'next', targetStep = null) {
+      const c = ensureCaseDetails(state.cases.find(x => x.id === state.activeCaseId));
       if (!c) return;
-      if (stp === 1) { c.facility = document.getElementById('wz-fac').value; c.title = document.getElementById('wz-title').value; }
-      if (stp === 2) { c.address = document.getElementById('wz-addr').value; c.plate = document.getElementById('wz-plate').value; }
-      if (stp === 3) { c.victimName = document.getElementById('wz-vname').value; c.victimPhone = document.getElementById('wz-vphone').value; }
-      if (stp === 4) {
-        c.accidentDesc = document.getElementById('wz-desc').value;
+      if (stp === 1) {
+        const t = document.getElementById('wz-title')?.value.trim();
+        if (t) c.title = t;
+      } else if (stp === 2) {
+        const a = document.getElementById('wz-addr')?.value.trim();
+        const d = document.getElementById('wz-detail-addr')?.value.trim();
+        if (a) c.address = a;
+        if (d !== undefined) c.detailAddress = d;
+      } else if (stp === 3) {
+        c.victimName = c.victims[0]?.name || '';
+        c.victimPhone = c.victims[0]?.phone || '';
+      } else if (stp === 4) {
+        const desc = document.getElementById('wz-desc')?.value;
+        const pl = document.getElementById('wz-plate')?.value;
+        if (desc !== undefined) c.accidentDesc = desc;
+        if (pl) c.plate = pl;
+      }
+      if (action === 'done') {
         c.insurerTask = 'progress';
         c.insurerAction = '상세 보기';
         c.insurerGuide = '상세 접수 정보 입력이 완료되어 복구업체 배정 대기 중입니다.';
       }
       syncCaseToDb(c);
-      showToast('저장되었습니다.');
-      if (goNext) { state.wizardStep = stp + 1; render(); } else { navigate('cases'); }
+      if (action === 'exit' || action === 'done') {
+        showToast('저장되었습니다.');
+        navigate('cases');
+      } else if (action === 'prev') {
+        state.wizardStep = Math.max(1, stp - 1);
+        render();
+      } else if (action === 'jump' && targetStep) {
+        state.wizardStep = targetStep;
+        render();
+      } else {
+        state.wizardStep = Math.min(4, stp + 1);
+        render();
+      }
     }
 
     function renderClaimDetailPage() {
@@ -2650,12 +2965,15 @@
 
     function handleReportPhotoUpload(caseId, slot, input) {
       const c = ensureCaseDetails(state.cases.find(x => x.id === caseId));
-      if (!c || !input.files) return;
-      Array.from(input.files).forEach(file => {
+      if (!c || !input.files || !input.files.length) return;
+      const files = Array.from(input.files);
+      files.forEach((file, idx) => {
         const reader = new FileReader();
         reader.onload = e => {
-          c.photos[slot].push({ name: file.name, url: e.target.result });
+          c.photos[slot].push({ name: file.name, url: e.target.result, origUrl: e.target.result, annotations: [], caption: '' });
+          const newIdx = c.photos[slot].length - 1;
           render();
+          if (idx === 0) openPhotoEditor(caseId, slot, newIdx);
         };
         reader.readAsDataURL(file);
       });
@@ -2706,11 +3024,17 @@
                     </label>
                   </div>
                   ${c.photos[slot].length > 0 ? `
-                    <div class="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
                       ${c.photos[slot].map((p, i) => `
-                        <div class="relative rounded-lg overflow-hidden border border-slate-200 bg-white">
-                          <img src="${p.url}" class="w-full h-20 object-cover" />
-                          <button type="button" onclick="state.cases.find(x=>x.id==='${c.id}').photos['${slot}'].splice(${i},1); render();" class="absolute top-1 right-1 w-5 h-5 rounded-full bg-slate-900/75 text-white text-[10px] cursor-pointer">×</button>
+                        <div class="rounded-xl overflow-hidden border border-slate-200 bg-white flex flex-col">
+                          <div class="relative">
+                            <img src="${p.url}" class="w-full h-28 object-cover cursor-pointer" onclick="openPhotoEditor('${c.id}','${slot}',${i})" />
+                            <button type="button" onclick="state.cases.find(x=>x.id==='${c.id}').photos['${slot}'].splice(${i},1); render();" class="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-slate-900/75 text-white text-xs cursor-pointer">×</button>
+                          </div>
+                          ${p.caption ? `<div class="px-2.5 py-1.5 text-[11px] text-slate-600 bg-slate-50 border-t border-slate-100 truncate">${escapeHtml(p.caption)}</div>` : ''}
+                          <button type="button" onclick="openPhotoEditor('${c.id}','${slot}',${i})" class="w-full py-1.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-50 border-t border-slate-100 cursor-pointer">
+                            치수·글씨
+                          </button>
                         </div>
                       `).join('')}
                     </div>
@@ -2870,6 +3194,407 @@
       syncCaseToDb(c);
       showToast(isFinal ? '최종견적(업체 청구)이 제출되었습니다.' : '최초견적이 제출되었습니다.');
       navigate('cases');
+    }
+
+    // =========================================================================
+    // 10-C. 사진 편집 모달 ('치수·글씨 넣기' - 글씨, 치수, 화살표, 도형, 옮기기)
+    // =========================================================================
+    const peState = {
+      caseId: null, slot: null, index: -1,
+      tool: 'text', shape: 'circle', color: '#ef4444', width: 4,
+      showMoreColors: false, showCaption: false, caption: '',
+      img: null, annotations: [], selectedIdx: -1,
+      dragging: false, dragMode: '', startX: 0, startY: 0, curX: 0, curY: 0,
+      dragOffsetX: 0, dragOffsetY: 0
+    };
+
+    const PE_GUIDES = {
+      text: '글씨를 넣을 자리를 누르고 바로 입력하세요.',
+      dim: '길이를 잴 구간을 끌어서 그리고 치수(예: 5m)를 적으세요.',
+      arrow: '끌어서 화살표를 그립니다. 끝나는 쪽에 화살촉이 붙습니다.',
+      shape_line: '사진 위를 끌어서 선을 그립니다.',
+      shape_circle: '끌어서 원(타원)으로 피해 부분을 감쌉니다.',
+      shape_rect: '끌어서 네모로 감쌉니다.',
+      move: '넣은 표시를 끌어서 옮깁니다. 글씨·치수는 누르면 고칩니다.'
+    };
+
+    function getPeGuide() {
+      if (peState.tool === 'shape') return PE_GUIDES['shape_' + peState.shape];
+      return PE_GUIDES[peState.tool] || '';
+    }
+
+    function openPhotoEditor(caseId, slot, index) {
+      const c = ensureCaseDetails(state.cases.find(x => x.id === caseId));
+      const p = c?.photos?.[slot]?.[index];
+      if (!p) return;
+      peState.caseId = caseId;
+      peState.slot = slot;
+      peState.index = index;
+      peState.tool = 'text';
+      peState.shape = 'circle';
+      peState.color = '#ef4444';
+      peState.width = 4;
+      peState.showMoreColors = false;
+      peState.showCaption = Boolean(p.caption);
+      peState.caption = p.caption || '';
+      peState.annotations = JSON.parse(JSON.stringify(p.annotations || []));
+      peState.selectedIdx = -1;
+      peState.dragging = false;
+
+      const img = new Image();
+      img.onload = () => {
+        peState.img = img;
+        renderPhotoEditorModal();
+      };
+      img.src = p.origUrl || p.url;
+    }
+
+    function renderPhotoEditorModal() {
+      const root = document.getElementById('modal-root');
+      const baseColors = [
+        { hex: '#ef4444', name: '빨강' },
+        { hex: '#eab308', name: '노랑' },
+        { hex: '#ffffff', name: '하양' },
+        { hex: '#0f172a', name: '검정' }
+      ];
+      const extraColors = [
+        { hex: '#2563eb', name: '파랑' },
+        { hex: '#16a34a', name: '초록' }
+      ];
+      const colors = peState.showMoreColors ? [...baseColors, ...extraColors] : baseColors;
+
+      root.innerHTML = `
+        <div class="fixed inset-0 z-50 bg-slate-900/75 flex items-center justify-center p-2 sm:p-4">
+          <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[95vh] flex flex-col overflow-hidden">
+            <!-- 상단 헤더 -->
+            <div class="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+              <button type="button" onclick="closeModal()" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer">취소</button>
+              <h3 class="text-sm font-bold text-slate-900">치수·글씨 넣기</h3>
+              <button type="button" onclick="savePhotoEditor()" class="px-4 py-1.5 rounded-lg bg-blue-700 hover:bg-blue-800 text-white text-xs font-semibold cursor-pointer">저장</button>
+            </div>
+
+            <!-- 상단 안내 배너 -->
+            <div class="px-4 py-2 bg-blue-50 border-b border-blue-100 text-xs text-blue-800 font-medium text-center">
+              ${escapeHtml(getPeGuide())}
+            </div>
+
+            <!-- 사진 캔버스 + 우측 하단 플로팅 버튼 + 인라인 텍스트 입력 팝업 -->
+            <div class="relative bg-slate-900 flex items-center justify-center overflow-hidden flex-1 min-h-[260px]">
+              <canvas id="pe-canvas" class="max-w-full max-h-[52vh] touch-none cursor-crosshair"></canvas>
+              <div id="pe-inline-box" class="hidden absolute z-10 bg-white rounded-xl shadow-xl border border-slate-200 p-2.5 flex items-center gap-1.5">
+                <input id="pe-inline-input" type="text" placeholder="내용 입력" class="px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs w-36 focus:outline-none focus:ring-2 focus:ring-blue-600" />
+                <button type="button" onclick="confirmPeInlineText()" class="px-2.5 py-1.5 rounded-lg bg-blue-700 text-white text-xs font-semibold cursor-pointer">확인</button>
+                <button type="button" onclick="cancelPeInlineText()" class="px-2 py-1.5 rounded-lg border border-slate-200 text-xs cursor-pointer">취소</button>
+              </div>
+              <div class="absolute bottom-3 right-3 flex gap-1.5">
+                <button type="button" onclick="peUndo()" class="px-2.5 py-1.5 rounded-lg bg-slate-800/85 hover:bg-slate-800 text-white text-[11px] font-semibold cursor-pointer">되돌리기</button>
+                <button type="button" onclick="peDeleteSelected()" class="px-2.5 py-1.5 rounded-lg bg-rose-600/90 hover:bg-rose-600 text-white text-[11px] font-semibold cursor-pointer">선택 지우기</button>
+              </div>
+            </div>
+
+            <!-- 접이식 산출식·설명 -->
+            <div class="px-4 py-2.5 border-t border-slate-200 bg-slate-50">
+              <button type="button" onclick="peState.showCaption=!peState.showCaption; renderPhotoEditorModal();" class="text-xs font-semibold text-slate-700 flex items-center gap-1.5 cursor-pointer">
+                <span>${peState.showCaption ? '▼' : '▶'} 산출식 · 설명 (선택 · 사진 아래에 함께 저장됩니다)</span>
+              </button>
+              ${peState.showCaption ? `
+                <textarea id="pe-caption" rows="2" oninput="peState.caption=this.value" placeholder="예: 벽면 철거 (1+25.2+1.5)×3.5 = 287㎡" class="mt-2 w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs">${escapeHtml(peState.caption)}</textarea>
+              ` : ''}
+            </div>
+
+            <!-- 색상 & 굵기 선택 바 -->
+            <div class="px-4 py-2.5 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 bg-white">
+              <div class="flex items-center gap-2">
+                ${colors.map(cl => `
+                  <button type="button" onclick="peState.color='${cl.hex}'; renderPhotoEditorModal();" title="${cl.name}"
+                    class="w-6 h-6 rounded-full border cursor-pointer ${peState.color===cl.hex ? 'ring-2 ring-blue-600 ring-offset-1 border-slate-400' : 'border-slate-300'}"
+                    style="background-color:${cl.hex}"></button>
+                `).join('')}
+                <button type="button" onclick="peState.showMoreColors=!peState.showMoreColors; renderPhotoEditorModal();" class="text-[11px] font-semibold text-blue-700 hover:underline ml-1 cursor-pointer">
+                  ${peState.showMoreColors ? '접기' : '색 더 보기'}
+                </button>
+              </div>
+              <div class="flex items-center gap-1">
+                ${[['얇게', 2], ['보통', 4], ['굵게', 7]].map(([lbl, w]) => `
+                  <button type="button" onclick="peState.width=${w}; renderPhotoEditorModal();"
+                    class="px-2.5 py-1 rounded-lg text-[11px] font-semibold cursor-pointer ${peState.width===w ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'}">${lbl}</button>
+                `).join('')}
+              </div>
+            </div>
+
+            <!-- 도형 세부 선택 (도형 탭 활성 시) -->
+            ${peState.tool === 'shape' ? `
+              <div class="px-4 py-2 border-t border-slate-100 bg-slate-50 flex items-center justify-center gap-2">
+                ${[['line', '선'], ['circle', '원'], ['rect', '네모']].map(([k, lbl]) => `
+                  <button type="button" onclick="peState.shape='${k}'; renderPhotoEditorModal();"
+                    class="px-3.5 py-1 rounded-full text-xs font-semibold cursor-pointer ${peState.shape===k ? 'bg-blue-700 text-white' : 'bg-white border border-slate-200 text-slate-700'}">${lbl}</button>
+                `).join('')}
+              </div>
+            ` : ''}
+
+            <!-- 하단 5종 도구 바 -->
+            <div class="grid grid-cols-5 border-t border-slate-200 bg-white">
+              ${[
+                ['text', '가', '글씨'],
+                ['dim', '↔', '치수'],
+                ['arrow', '↗', '화살표'],
+                ['shape', '○', '도형'],
+                ['move', '✥', '옮기기']
+              ].map(([k, ic, lbl]) => `
+                <button type="button" onclick="peState.tool='${k}'; peState.selectedIdx=-1; renderPhotoEditorModal();"
+                  class="py-2.5 flex flex-col items-center gap-0.5 text-xs font-semibold cursor-pointer ${peState.tool===k ? 'text-blue-700 bg-blue-50/70' : 'text-slate-600 hover:bg-slate-50'}">
+                  <span class="text-sm leading-none">${ic}</span>
+                  <span class="text-[11px]">${lbl}</span>
+                </button>
+              `).join('')}
+            </div>
+          </div>
+        </div>
+      `;
+      setupPeCanvas();
+    }
+
+    let pePendingTextAction = null;
+
+    function setupPeCanvas() {
+      const canvas = document.getElementById('pe-canvas');
+      if (!canvas || !peState.img) return;
+      const maxW = 800;
+      const scale = peState.img.width > maxW ? maxW / peState.img.width : 1;
+      canvas.width = Math.round(peState.img.width * scale);
+      canvas.height = Math.round(peState.img.height * scale);
+      drawPeCanvas();
+
+      const getPos = e => {
+        const rect = canvas.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        return {
+          x: (clientX - rect.left) * (canvas.width / rect.width),
+          y: (clientY - rect.top) * (canvas.height / rect.height)
+        };
+      };
+
+      const onDown = e => {
+        const pos = getPos(e);
+        if (peState.tool === 'text') {
+          showPeInlineInput(pos.x, pos.y, '', val => {
+            if (val) { peState.annotations.push({ type: 'text', x: pos.x, y: pos.y, text: val, color: peState.color, width: peState.width }); drawPeCanvas(); }
+          });
+          return;
+        }
+        if (peState.tool === 'move') {
+          const hit = findAnnotationAt(pos.x, pos.y);
+          peState.selectedIdx = hit;
+          if (hit >= 0) {
+            const ann = peState.annotations[hit];
+            peState.dragging = true;
+            peState.startX = pos.x; peState.startY = pos.y;
+            peState.dragOffsetX = pos.x; peState.dragOffsetY = pos.y;
+          }
+          drawPeCanvas();
+          return;
+        }
+        peState.dragging = true;
+        peState.startX = pos.x; peState.startY = pos.y;
+        peState.curX = pos.x; peState.curY = pos.y;
+      };
+
+      const onMove = e => {
+        if (!peState.dragging) return;
+        e.preventDefault();
+        const pos = getPos(e);
+        if (peState.tool === 'move' && peState.selectedIdx >= 0) {
+          const dx = pos.x - peState.dragOffsetX;
+          const dy = pos.y - peState.dragOffsetY;
+          const ann = peState.annotations[peState.selectedIdx];
+          if (ann.type === 'text') { ann.x += dx; ann.y += dy; }
+          else { ann.x1 += dx; ann.y1 += dy; ann.x2 += dx; ann.y2 += dy; }
+          peState.dragOffsetX = pos.x; peState.dragOffsetY = pos.y;
+          drawPeCanvas();
+          return;
+        }
+        peState.curX = pos.x; peState.curY = pos.y;
+        drawPeCanvas();
+        drawAnnotation(canvas.getContext('2d'), buildTempAnnotation(), false);
+      };
+
+      const onUp = e => {
+        if (!peState.dragging) return;
+        peState.dragging = false;
+        if (peState.tool === 'move') {
+          if (peState.selectedIdx >= 0 && Math.hypot(peState.curX - peState.startX, peState.curY - peState.startY) < 4) {
+            const ann = peState.annotations[peState.selectedIdx];
+            if (ann.type === 'text' || ann.type === 'dim') {
+              const cx = ann.type === 'text' ? ann.x : (ann.x1 + ann.x2) / 2;
+              const cy = ann.type === 'text' ? ann.y : (ann.y1 + ann.y2) / 2;
+              showPeInlineInput(cx, cy, ann.text || '', val => {
+                if (val !== null) { ann.text = val; drawPeCanvas(); }
+              });
+            }
+          }
+          return;
+        }
+        if (Math.hypot(peState.curX - peState.startX, peState.curY - peState.startY) < 8) return;
+        const item = buildTempAnnotation();
+        if (peState.tool === 'dim') {
+          showPeInlineInput((item.x1 + item.x2) / 2, (item.y1 + item.y2) / 2, '5m', val => {
+            item.text = val || '치수';
+            peState.annotations.push(item);
+            drawPeCanvas();
+          });
+        } else {
+          peState.annotations.push(item);
+          drawPeCanvas();
+        }
+      };
+
+      canvas.onmousedown = onDown;
+      canvas.onmousemove = onMove;
+      window.onmouseup = onUp;
+      canvas.ontouchstart = onDown;
+      canvas.ontouchmove = onMove;
+      canvas.ontouchend = onUp;
+    }
+
+    function buildTempAnnotation() {
+      const t = peState.tool === 'shape' ? peState.shape : peState.tool;
+      return { type: t, x1: peState.startX, y1: peState.startY, x2: peState.curX, y2: peState.curY, text: '', color: peState.color, width: peState.width };
+    }
+
+    function findAnnotationAt(x, y) {
+      for (let i = peState.annotations.length - 1; i >= 0; i--) {
+        const a = peState.annotations[i];
+        if (a.type === 'text') {
+          if (Math.abs(x - a.x) < 60 && Math.abs(y - a.y) < 24) return i;
+        } else {
+          const minX = Math.min(a.x1, a.x2) - 16, maxX = Math.max(a.x1, a.x2) + 16;
+          const minY = Math.min(a.y1, a.y2) - 16, maxY = Math.max(a.y1, a.y2) + 16;
+          if (x >= minX && x <= maxX && y >= minY && y <= maxY) return i;
+        }
+      }
+      return -1;
+    }
+
+    function showPeInlineInput(cx, cy, defaultVal, cb) {
+      const box = document.getElementById('pe-inline-box');
+      const inp = document.getElementById('pe-inline-input');
+      if (!box || !inp) return;
+      pePendingTextAction = cb;
+      inp.value = defaultVal;
+      box.classList.remove('hidden');
+      box.style.left = '50%';
+      box.style.top = '16px';
+      box.style.transform = 'translateX(-50%)';
+      inp.focus();
+      inp.onkeydown = ev => { if (ev.key === 'Enter') confirmPeInlineText(); if (ev.key === 'Escape') cancelPeInlineText(); };
+    }
+
+    function confirmPeInlineText() {
+      const box = document.getElementById('pe-inline-box');
+      const inp = document.getElementById('pe-inline-input');
+      if (box) box.classList.add('hidden');
+      if (pePendingTextAction) { pePendingTextAction(inp.value.trim()); pePendingTextAction = null; }
+    }
+
+    function cancelPeInlineText() {
+      const box = document.getElementById('pe-inline-box');
+      if (box) box.classList.add('hidden');
+      pePendingTextAction = null;
+    }
+
+    function drawPeCanvas() {
+      const canvas = document.getElementById('pe-canvas');
+      if (!canvas || !peState.img) return;
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(peState.img, 0, 0, canvas.width, canvas.height);
+      peState.annotations.forEach((ann, idx) => drawAnnotation(ctx, ann, idx === peState.selectedIdx));
+    }
+
+    function drawAnnotation(ctx, a, selected) {
+      ctx.save();
+      ctx.strokeStyle = a.color;
+      ctx.fillStyle = a.color;
+      ctx.lineWidth = a.width || 4;
+      ctx.lineCap = 'round';
+      if (selected) { ctx.shadowColor = '#3b82f6'; ctx.shadowBlur = 10; }
+
+      if (a.type === 'text') {
+        const fs = (a.width || 4) * 4 + 10;
+        ctx.font = `bold ${fs}px Inter, sans-serif`;
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = a.color === '#ffffff' ? '#0f172a' : '#ffffff';
+        ctx.strokeText(a.text, a.x, a.y);
+        ctx.fillText(a.text, a.x, a.y);
+      } else if (a.type === 'line') {
+        ctx.beginPath(); ctx.moveTo(a.x1, a.y1); ctx.lineTo(a.x2, a.y2); ctx.stroke();
+      } else if (a.type === 'rect') {
+        ctx.strokeRect(a.x1, a.y1, a.x2 - a.x1, a.y2 - a.y1);
+      } else if (a.type === 'circle') {
+        const cx = (a.x1 + a.x2) / 2, cy = (a.y1 + a.y2) / 2;
+        const rx = Math.abs(a.x2 - a.x1) / 2, ry = Math.abs(a.y2 - a.y1) / 2;
+        ctx.beginPath(); ctx.ellipse(cx, cy, Math.max(rx, 2), Math.max(ry, 2), 0, 0, Math.PI * 2); ctx.stroke();
+      } else if (a.type === 'arrow' || a.type === 'dim') {
+        const angle = Math.atan2(a.y2 - a.y1, a.x2 - a.x1);
+        const head = 12 + (a.width || 4);
+        ctx.beginPath(); ctx.moveTo(a.x1, a.y1); ctx.lineTo(a.x2, a.y2); ctx.stroke();
+        // 끝 화살표
+        ctx.beginPath();
+        ctx.moveTo(a.x2, a.y2);
+        ctx.lineTo(a.x2 - head * Math.cos(angle - Math.PI / 6), a.y2 - head * Math.sin(angle - Math.PI / 6));
+        ctx.moveTo(a.x2, a.y2);
+        ctx.lineTo(a.x2 - head * Math.cos(angle + Math.PI / 6), a.y2 - head * Math.sin(angle + Math.PI / 6));
+        ctx.stroke();
+        if (a.type === 'dim') {
+          // 시작점 화살표 및 치수 텍스트
+          ctx.beginPath();
+          ctx.moveTo(a.x1, a.y1);
+          ctx.lineTo(a.x1 + head * Math.cos(angle - Math.PI / 6), a.y1 + head * Math.sin(angle - Math.PI / 6));
+          ctx.moveTo(a.x1, a.y1);
+          ctx.lineTo(a.x1 + head * Math.cos(angle + Math.PI / 6), a.y1 + head * Math.sin(angle + Math.PI / 6));
+          ctx.stroke();
+          if (a.text) {
+            const mx = (a.x1 + a.x2) / 2, my = (a.y1 + a.y2) / 2 - 8;
+            ctx.font = 'bold 16px Inter, sans-serif';
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = '#ffffff';
+            ctx.strokeText(a.text, mx - 14, my);
+            ctx.fillText(a.text, mx - 14, my);
+          }
+        }
+      }
+      ctx.restore();
+    }
+
+    function peUndo() {
+      if (peState.annotations.length > 0) { peState.annotations.pop(); peState.selectedIdx = -1; drawPeCanvas(); }
+    }
+
+    function peDeleteSelected() {
+      if (peState.selectedIdx >= 0) {
+        peState.annotations.splice(peState.selectedIdx, 1);
+        peState.selectedIdx = -1;
+      } else if (peState.annotations.length > 0) {
+        peState.annotations.pop();
+      }
+      drawPeCanvas();
+    }
+
+    function savePhotoEditor() {
+      const c = state.cases.find(x => x.id === peState.caseId);
+      const p = c?.photos?.[peState.slot]?.[peState.index];
+      const canvas = document.getElementById('pe-canvas');
+      if (p && canvas) {
+        peState.selectedIdx = -1;
+        drawPeCanvas();
+        p.url = canvas.toDataURL('image/jpeg', 0.9);
+        p.annotations = JSON.parse(JSON.stringify(peState.annotations));
+        p.caption = peState.caption;
+      }
+      closeModal();
+      showToast('편집한 사진과 산출식이 저장되었습니다.');
+      render();
     }
 
     function destroyCharts() {
