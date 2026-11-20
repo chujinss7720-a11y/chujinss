@@ -437,6 +437,11 @@
       if (c.lng === undefined) c.lng = 126.9780;
       if (!c.mapMode) c.mapMode = 'normal';
       if (c.mapZoom === undefined) c.mapZoom = 1;
+      if (!c.memos) c.memos = [];
+      if (!c.history) c.history = [
+        { date: c.date || '2026-11-20', text: '피해복구의뢰 제출' },
+        { date: c.date || '2026-11-20', text: '복구업체 배정 (' + (c.partnerOrg || '한빛복구') + ')' }
+      ];
       return c;
     }
 
@@ -615,6 +620,7 @@
         new_case: '복구의뢰 접수',
         new_case_wizard: '접수 내용 보완',
         claim_detail: '청구서 상세',
+        case_detail: '피해현장 상세 현황',
         report_edit: '현장 보고서',
         estimate_edit: '견적·업체 청구 작성'
       };
@@ -891,7 +897,7 @@
                 </div>
                 <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div class="space-y-1">
-                    <h3 class="text-base font-bold text-slate-900">${escapeHtml(c.title)}</h3>
+                    <h3 onclick="openCaseDetailPage('${c.id}')" class="text-base font-bold text-slate-900 hover:text-blue-700 cursor-pointer">${escapeHtml(c.title)}</h3>
                     <p class="text-xs text-slate-500">${escapeHtml(c.address)} · ${escapeHtml(c.facility)} · ${escapeHtml(c.insurerGuide)}</p>
                   </div>
                   <button type="button" onclick="openInsurerCasePage('${c.id}')"
@@ -2258,6 +2264,12 @@
       navigate('new_case');
     }
 
+    function openCaseDetailPage(caseId) {
+      ensureCaseDetails(state.cases.find(x => x.id === caseId));
+      state.activeCaseId = caseId;
+      navigate('case_detail');
+    }
+
     function openInsurerCasePage(caseId) {
       const c = state.cases.find(x => x.id === caseId);
       if (!c) return;
@@ -2271,7 +2283,7 @@
         navigate('new_case_wizard');
         return;
       }
-      openInsurerCaseAction(caseId);
+      openCaseDetailPage(caseId);
     }
 
     function openClaimDetailPage(caseId) {
@@ -3827,6 +3839,230 @@
       }
     }
 
+    // =========================================================================
+    // 10-E. 피해현장 상세 현황 페이지 (case_detail)
+    // =========================================================================
+    function addCaseMemo(caseId) {
+      const inp = document.getElementById('cd-memo-input');
+      const txt = inp ? inp.value.trim() : '';
+      if (!txt) { showToast('메모 내용을 입력해 주세요.', 'error'); return; }
+      const c = ensureCaseDetails(state.cases.find(x => x.id === caseId));
+      if (!c) return;
+      c.memos.unshift({ author: state.user?.name || '사용자', date: '2026-11-20', text: txt });
+      c.history.unshift({ date: '2026-11-20', text: `업무 메모 등록 (${state.user?.name || ''})` });
+      syncCaseToDb(c);
+      showToast('업무 메모가 등록되었습니다.');
+      render();
+    }
+
+    function handleCaseDetailExtraPhoto(caseId, input) {
+      handleReportPhotoUpload(caseId, 'docs', input);
+    }
+
+    function scrollCaseSection(secId) {
+      const el = document.getElementById(secId);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function renderCaseDetailPage() {
+      const c = ensureCaseDetails(state.cases.find(x => x.id === state.activeCaseId));
+      if (!c) { navigate('cases'); return ''; }
+      const step8 = c.stage === 'done' ? 8 : c.stage === '04' ? 7 : c.stage === '03' ? 6 : c.stage === '02' ? (c.workDone ? 5 : 4) : (c.partnerManager && c.partnerManager !== '미지정' ? 3 : 2);
+      const stages8 = ['1. 접수', '2. 업체 배정', '3. 현장 확인', '4. 복구 중', '5. 복구 완료', '6. 청구 준비', '7. 청구 확인·지급', '8. 입금 확인'];
+      const extraDocs = [...(c.photos.docs || [])];
+      const reportPhotos = [...(c.photos.before || []), ...(c.photos.during || []), ...(c.photos.after || [])];
+
+      return `
+        <!-- 상단 요약 헤더 -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div class="space-y-1.5">
+            <div class="text-xs text-slate-500 font-medium">${escapeHtml(c.id)} · 접수 ${escapeHtml(c.date)} · ${escapeHtml(c.insurerOrg)} 의뢰</div>
+            <h2 class="text-xl font-bold text-slate-900">${escapeHtml(c.title)}</h2>
+            <div class="flex flex-wrap gap-1.5 pt-0.5">
+              <span class="px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[11px] font-bold">${c.stage === 'done' ? '종료' : '현장 보고·진행 중'}</span>
+              <span class="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[11px] font-semibold">${escapeHtml(c.address)}</span>
+              ${(c.selectedFacilities || [c.facility]).map(f => `<span class="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[11px] font-semibold">${escapeHtml(f)}</span>`).join('')}
+            </div>
+          </div>
+          <div class="flex gap-2 self-start">
+            ${c.insurerAction === '이어서 적기' ? `<button type="button" onclick="state.activeCaseId='${c.id}'; state.wizardStep=1; navigate('new_case_wizard');" class="px-3.5 py-2 rounded-xl bg-blue-700 text-white text-xs font-semibold cursor-pointer">이어서 적기</button>` : ''}
+            <button type="button" onclick="navigate('cases')" class="px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer">← 목록으로</button>
+          </div>
+        </div>
+
+        <!-- 8단계 진행 타임라인 & 안내 배너 -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
+          <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
+            ${stages8.map((lbl, idx) => {
+              const num = idx + 1;
+              const done = num < step8;
+              const cur = num === step8;
+              return `
+                <div class="p-2.5 rounded-xl border text-center text-xs ${cur ? 'border-blue-600 bg-blue-50 text-blue-800 font-bold' : done ? 'border-emerald-200 bg-emerald-50 text-emerald-800 font-semibold' : 'border-slate-100 bg-slate-50 text-slate-400'}">
+                  <div>${done ? '✓ ' : ''}${lbl}</div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+          <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+            <div>
+              <strong class="text-slate-900">${escapeHtml(c.insurerGuide)}</strong>
+              <span class="text-slate-500 ml-1">(${escapeHtml(c.partnerOrg)} · 담당자 ${escapeHtml(c.partnerManager)})</span>
+            </div>
+            <button type="button" onclick="showToast('담당자(${escapeHtml(c.partnerManager)}) 연락처: 010-6315-8821', 'info')" class="px-3 py-1.5 rounded-lg bg-white border border-slate-200 font-semibold text-slate-700 hover:bg-slate-100 self-start sm:self-center cursor-pointer">업체 담당자 연락처</button>
+          </div>
+        </div>
+
+        <!-- 5개 섹션 바로가기 탭 -->
+        <div class="bg-white rounded-xl border border-slate-200 px-3 py-2 flex flex-wrap gap-1.5 sticky top-14 z-10">
+          ${[
+            ['cd-sec-basic', '기본정보'],
+            ['cd-sec-media', '사진·동영상'],
+            ['cd-sec-report', '현장 자료'],
+            ['cd-sec-est', '견적 내역'],
+            ['cd-sec-side', '처리 기록']
+          ].map(([id, lbl]) => `
+            <button type="button" onclick="scrollCaseSection('${id}')" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 hover:bg-blue-50 hover:text-blue-700 cursor-pointer">${lbl}</button>
+          `).join('')}
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          <!-- 좌측 메인 칼럼 -->
+          <div class="lg:col-span-2 space-y-5">
+            <!-- 1. 기본정보 + 지도 + 의뢰 내용/첨부 -->
+            <div id="cd-sec-basic" class="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
+              <h3 class="text-base font-bold text-slate-900">피해현장 기본정보</h3>
+              <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+                <div><span class="text-slate-400">보험사·접수번호</span><div class="font-semibold mt-0.5">${escapeHtml(c.insurerOrg)} · ${escapeHtml(c.insurerCaseNo || c.id)}</div></div>
+                <div><span class="text-slate-400">손해·보험 구분</span><div class="font-semibold mt-0.5">${escapeHtml(c.kind)} · ${escapeHtml(c.insType || '자동차 대물')}</div></div>
+                <div><span class="text-slate-400">피해 위치</span><div class="font-semibold mt-0.5">${escapeHtml(c.address)}</div></div>
+                <div><span class="text-slate-400">사고일 / 접수일</span><div class="font-semibold mt-0.5">${escapeHtml(c.date)}</div></div>
+                <div><span class="text-slate-400">시설물 분류</span><div class="font-semibold mt-0.5">${escapeHtml((c.selectedFacilities || [c.facility]).join(', '))}</div></div>
+                <div><span class="text-slate-400">피해자</span><div class="font-semibold mt-0.5">${escapeHtml(c.victimName || '미등록')} ${c.victimPhone ? '· ' + escapeHtml(c.victimPhone) : ''}</div></div>
+                <div><span class="text-slate-400">사고 차량번호</span><div class="font-semibold mt-0.5">${escapeHtml(c.plate || '미등록')}</div></div>
+                <div><span class="text-slate-400">피해시설 관리기관</span><div class="font-semibold mt-0.5">${escapeHtml(c.adminOrg || '미등록')}</div></div>
+              </div>
+
+              <!-- 피해 위치 지도 -->
+              <div class="space-y-2 pt-2 border-t border-slate-100">
+                <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <span class="font-bold text-slate-700">피해 위치 지도</span>
+                  <div class="flex gap-1.5">
+                    <a href="https://map.kakao.com/link/search/${encodeURIComponent(c.address)}" target="_blank" rel="noopener noreferrer" class="px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 border border-amber-200 font-semibold hover:bg-amber-100">카카오맵 길찾기</a>
+                    <a href="https://map.naver.com/v5/search/${encodeURIComponent(c.address)}" target="_blank" rel="noopener noreferrer" class="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 font-semibold hover:bg-emerald-100">네이버 지도</a>
+                  </div>
+                </div>
+                <div class="relative rounded-2xl border border-slate-200 overflow-hidden">
+                  <div id="cd-leaflet-map" style="height: 240px; width: 100%; z-index: 1;"></div>
+                  <div class="absolute top-2.5 right-2.5 z-[400] bg-white rounded-lg border border-slate-200 p-1 flex gap-1 text-[11px] font-semibold shadow-xs">
+                    <button type="button" onclick="setMapLayer('${c.id}','normal')" class="px-2 py-1 rounded cursor-pointer ${c.mapMode==='normal'?'bg-blue-700 text-white':'text-slate-600'}">일반 지도</button>
+                    <button type="button" onclick="setMapLayer('${c.id}','satellite')" class="px-2 py-1 rounded cursor-pointer ${c.mapMode==='satellite'?'bg-blue-700 text-white':'text-slate-600'}">위성 사진</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 의뢰 내용 및 첨부 -->
+              <div class="space-y-2 pt-2 border-t border-slate-100 text-xs">
+                <div class="font-bold text-slate-700">의뢰 내용</div>
+                <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-700">${escapeHtml(c.accidentDesc || '작성된 의뢰 내용이 없습니다.')}</div>
+              </div>
+            </div>
+
+            <!-- 2. 피해현장 사진·동영상 -->
+            <div id="cd-sec-media" class="bg-white rounded-2xl border border-slate-200 p-5 space-y-3">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h3 class="text-base font-bold text-slate-900">피해현장 사진·동영상</h3>
+                  <p class="text-xs text-slate-500">피해현장 관계자가 추가한 사진과 첨부 자료입니다.</p>
+                </div>
+                <label class="px-3 py-1.5 rounded-xl bg-blue-700 text-white text-xs font-semibold hover:bg-blue-800 cursor-pointer">
+                  + 사진 넣기
+                  <input type="file" multiple accept="image/*" class="hidden" onchange="handleCaseDetailExtraPhoto('${c.id}', this)" />
+                </label>
+              </div>
+              ${extraDocs.length > 0 ? `
+                <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  ${extraDocs.map((p, idx) => `
+                    <div class="rounded-xl border border-slate-200 overflow-hidden bg-slate-50 flex flex-col">
+                      <img src="${p.url}" class="w-full h-28 object-cover cursor-pointer" onclick="openPhotoEditor('${c.id}','docs',${idx})" />
+                      <div class="p-2 text-[11px] truncate font-medium text-slate-700">${escapeHtml(p.name || '첨부 사진')}</div>
+                      <button type="button" onclick="openPhotoEditor('${c.id}','docs',${idx})" class="py-1.5 text-[11px] font-semibold text-blue-700 bg-white border-t border-slate-200 hover:bg-blue-50 cursor-pointer">치수·글씨</button>
+                    </div>
+                  `).join('')}
+                </div>
+              ` : '<div class="p-6 rounded-xl border border-dashed border-slate-200 text-center text-xs text-slate-400">등록된 파일이 없습니다.</div>'}
+            </div>
+
+            <!-- 3. 현장 보고 (현장 자료) -->
+            <div id="cd-sec-report" class="bg-white rounded-2xl border border-slate-200 p-5 space-y-3">
+              <div class="flex items-center justify-between">
+                <h3 class="text-base font-bold text-slate-900">현장 보고</h3>
+                <span class="px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-800 text-[11px] font-bold">${c.workDone ? '현장 작업 완료' : '현장 자료 작성 중'}</span>
+              </div>
+              <div class="grid grid-cols-2 gap-3 text-xs">
+                <div><span class="text-slate-400">복구 예정일</span><div class="font-semibold mt-0.5">${escapeHtml(c.dueDate || '미등록')}</div></div>
+                <div><span class="text-slate-400">현장 완료일</span><div class="font-semibold mt-0.5">${escapeHtml(c.completedDate || '미등록')}</div></div>
+              </div>
+              <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700">${escapeHtml(c.reportDesc || '보고 내용이 없습니다.')}</div>
+              ${reportPhotos.length > 0 ? `
+                <div class="grid grid-cols-3 gap-2">
+                  ${reportPhotos.map(p => `<img src="${p.url}" class="w-full h-24 object-cover rounded-xl border border-slate-200" />`).join('')}
+                </div>
+              ` : ''}
+            </div>
+
+            <!-- 4. 최초견적 (대흥이엔씨 검토) -->
+            <div id="cd-sec-est" class="bg-white rounded-2xl border border-slate-200 p-5 space-y-2">
+              <h3 class="text-base font-bold text-slate-900">최초견적 (대흥이엔씨 검토)</h3>
+              ${c.insurerClaimAmt > 0
+                ? `<div class="p-4 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-between text-sm"><span class="font-semibold text-blue-900">검토 공개 금액</span><strong class="text-blue-700 text-base">${won(c.insurerClaimAmt)}</strong></div>`
+                : '<p class="text-xs text-slate-500">대흥이엔씨가 업체 견적을 검토한 뒤 공개됩니다.</p>'}
+            </div>
+          </div>
+
+          <!-- 우측 사이드 칼럼 -->
+          <div id="cd-sec-side" class="space-y-5">
+            <div class="bg-white rounded-2xl border border-slate-200 p-5 space-y-3 text-xs">
+              <h3 class="text-sm font-bold text-slate-900">관계자</h3>
+              <div class="space-y-2.5">
+                <div class="p-2.5 rounded-xl bg-slate-50"><div class="text-slate-400">의뢰 기관</div><div class="font-bold text-slate-900 mt-0.5">${escapeHtml(c.insurerOrg)} · ${escapeHtml(c.insurerPhone || '010-4821-3309')}</div></div>
+                <div class="p-2.5 rounded-xl bg-slate-50"><div class="text-slate-400">복구업체 / 담당자</div><div class="font-bold text-slate-900 mt-0.5">${escapeHtml(c.partnerOrg)} · ${escapeHtml(c.partnerManager)}</div></div>
+                <div class="p-2.5 rounded-xl bg-slate-50"><div class="text-slate-400">대흥이엔씨 담당</div><div class="font-bold text-slate-900 mt-0.5">이서연 · 010-9102-7740</div></div>
+              </div>
+            </div>
+
+            <div class="bg-white rounded-2xl border border-slate-200 p-5 space-y-3 text-xs">
+              <h3 class="text-sm font-bold text-slate-900">업무 메모</h3>
+              <div class="flex gap-2">
+                <input id="cd-memo-input" type="text" placeholder="메모를 입력하세요" class="flex-1 px-3 py-2 rounded-xl border border-slate-200 text-xs" />
+                <button type="button" onclick="addCaseMemo('${c.id}')" class="px-3 py-2 rounded-xl bg-blue-700 text-white font-semibold cursor-pointer shrink-0">메모 추가</button>
+              </div>
+              <div class="space-y-2 max-h-48 overflow-y-auto">
+                ${c.memos.length > 0 ? c.memos.map(m => `
+                  <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                    <div class="font-semibold text-slate-900">${escapeHtml(m.text)}</div>
+                    <div class="text-[10px] text-slate-400 mt-0.5">${escapeHtml(m.author)} · ${escapeHtml(m.date)}</div>
+                  </div>
+                `).join('') : '<div class="text-slate-400 py-2">등록된 업무 메모가 없습니다.</div>'}
+              </div>
+            </div>
+
+            <div class="bg-white rounded-2xl border border-slate-200 p-5 space-y-3 text-xs">
+              <h3 class="text-sm font-bold text-slate-900">처리 기록</h3>
+              <div class="space-y-2 border-l-2 border-blue-200 pl-3">
+                ${c.history.map(h => `
+                  <div>
+                    <div class="font-semibold text-slate-800">${escapeHtml(h.text)}</div>
+                    <div class="text-[10px] text-slate-400">${escapeHtml(h.date)}</div>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
     function destroyCharts() {
       chartInstances.forEach(ch => ch.destroy());
       chartInstances = [];
@@ -3910,12 +4146,14 @@
       else if (state.route === 'claim_detail') pageHtml = renderClaimDetailPage();
       else if (state.route === 'report_edit') pageHtml = renderReportEditPage();
       else if (state.route === 'estimate_edit') pageHtml = renderEstimateEditPage();
+      else if (state.route === 'case_detail') pageHtml = renderCaseDetailPage();
 
       root.innerHTML = renderShell(pageHtml);
       if (window.lucide) lucide.createIcons();
       if (state.route === 'home' && state.user.role === 'daehung') initHomeCharts();
       if (state.route === 'new_case' && state.newCaseForm.openSec2) initLocationMap('nc-leaflet-map', 'newCaseForm');
       if (state.route === 'new_case_wizard' && state.wizardStep === 2) initLocationMap('wz-leaflet-map', state.activeCaseId);
+      if (state.route === 'case_detail') initLocationMap('cd-leaflet-map', state.activeCaseId);
     }
 
     restoreSession();
