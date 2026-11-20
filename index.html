@@ -1,62 +1,2186 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <title>대흥이엔씨 - 시스템 로그인</title>
-    <style>
-        body { font-family: 'Malgun Gothic', sans-serif; background: #f4f6f9; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .login-box { background: #fff; padding: 40px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 350px; text-align: center; }
-        h2 { margin-top: 0; color: #0056b3; }
-        .info-text { font-size: 13px; color: #666; margin-bottom: 25px; }
-        input[type="text"], input[type="password"] { width: 100%; padding: 12px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 14px; }
-        .btn-login { width: 100%; padding: 14px; background: #0056b3; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 15px; transition: background 0.2s; }
-        .btn-login:hover { background: #004494; }
-        .test-accounts { margin-top: 25px; text-align: left; background: #f8f9fa; padding: 15px; border-radius: 4px; font-size: 12px; color: #555; line-height: 1.6; border: 1px dashed #ccc; }
-    </style>
-</head>
-<body>
-
-<div class="login-box">
-    <h2>대흥이엔씨 시스템</h2>
-    <p class="info-text">통합 복구 관리 시스템</p>
-    
-    <!-- 엔터키를 쳐도 로그인이 작동하도록 onkeypress 이벤트 추가 -->
-    <input type="text" id="userId" placeholder="아이디" onkeypress="if(event.keyCode==13) login();">
-    <input type="password" id="userPw" placeholder="비밀번호" onkeypress="if(event.keyCode==13) login();">
-    
-    <button class="btn-login" onclick="login()">로그인</button>
-
-    <!-- 시연 시 참고용 테스트 계정 안내 -->
-    <div class="test-accounts">
-        <strong>[테스트 계정 안내]</strong><br>
-        👤 <strong>관리자 (대흥이엔씨):</strong> dhadmin / 1234<br>
-        📝 <strong>손해사정사 (접수):</strong> sontest / 1234<br>
-        👷‍♂️ <strong>시공파트너 (현장):</strong> matest / 1234
-    </div>
-</div>
-
-<script>
-    function login() {
-        // 입력된 아이디와 비밀번호 가져오기 (공백 제거)
-        const id = document.getElementById('userId').value.trim();
-        const pw = document.getElementById('userPw').value.trim();
-
-        // 권한별 접근 제어 및 라우팅 로직
-        if (id === 'dhadmin' && pw === '1234') {
-            // 관리자: 메인 대시보드로 이동
-            window.location.href = 'main_dashboard.html'; 
-        } else if (id === 'sontest' && pw === '1234') {
-            // 손해사정사: 신규 접수 폼으로 이동
-            window.location.href = 'intake_form.html'; 
-        } else if (id === 'matest' && pw === '1234') {
-            // 시공파트너사: 메인 대시보드로 똑같이 이동하도록 수정!
-            window.location.href = 'main_dashboard.html'; 
-        } else {
-            // 정보가 틀렸거나 없는 계정일 경우
-            alert('아이디 또는 비밀번호가 일치하지 않거나 접근 권한이 없습니다.');
-        }
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>대흥이엔씨 시스템 - 통합 복구 관리 시스템 (복구ON)</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+      background-color: #f8fafc;
+      color: #0f172a;
     }
-</script>
+    .scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
+    .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+    .scrollbar-thin::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
+  </style>
+</head>
+<body class="min-h-screen antialiased">
+  <div id="app"></div>
+  <div id="modal-root"></div>
+  <div id="toast-root" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
+  <script>
+    // =========================================================================
+    // 1. 초기 상태 및 도메인 데이터 (복구ON / 대흥이엔씨 통합 복구 관리 시스템)
+    // =========================================================================
+    const ACCOUNTS = [
+      { id: 'insurer', alias: 'sontest', pw: '1234', role: 'insurer', name: '김민수', org: '버스공제조합', roleLabel: '보험사·공제조합', phone: '010-4821-3309', email: 'ms.kim@busmutual.or.kr', status: '활성', sms: true, kakao: false, emailNoti: true },
+      { id: 'daehung', alias: 'dhadmin', pw: '1234', role: 'daehung', name: '이서연', org: '(주)대흥이엔씨', roleLabel: '최고권한 관리자', phone: '010-9102-7740', email: 'sy.lee@daehungenc.co.kr', status: '활성', sms: true, kakao: false, emailNoti: true },
+      { id: 'partner', alias: 'matest', pw: '1234', role: 'partner', name: '박지훈', org: '한빛복구', roleLabel: '시공파트너사', phone: '010-6315-8821', email: 'jh.park@hanbitfix.co.kr', status: '활성', sms: true, kakao: false, emailNoti: true }
+    ];
+
+    // =========================================================================
+    // 1-B. Supabase 실시간 DB 연동 설정 (URL/Key 입력 시 모든 PC 실시간 공유)
+    // =========================================================================
+    const SUPABASE_CONFIG = {
+      url: '',     // 배포 시 본인 Supabase Project URL 입력 (예: https://xxxx.supabase.co)
+      anonKey: ''  // 배포 시 본인 Supabase Anon/Publishable Key 입력
+    };
+    let sbClient = null;
+    let dbConnected = false;
+
+    function getSavedSbConfig() {
+      if (SUPABASE_CONFIG.url && SUPABASE_CONFIG.anonKey) return SUPABASE_CONFIG;
+      try {
+        const raw = localStorage.getItem('daehung_supabase_cfg');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && parsed.url && parsed.anonKey) return parsed;
+        }
+      } catch (e) {}
+      return { url: '', anonKey: '' };
+    }
+
+    function mapDbCaseToApp(r) {
+      const recDate = r.received_date || '2026-11-20';
+      const elapsed = Math.max(0, Math.floor((Date.now() - new Date(recDate).getTime()) / 86400000));
+      const due = r.due_date || '2026-11-30';
+      const isOverdue = r.stage !== 'done' && new Date(due).getTime() < Date.now();
+      return {
+        id: r.case_no,
+        date: recDate,
+        elapsedDays: isNaN(elapsed) ? 0 : elapsed,
+        kind: r.kind || '3종',
+        facility: r.facility || '가드레일',
+        title: r.title,
+        address: r.address,
+        plate: r.plate || '미상',
+        insurerOrg: r.insurer_org || '버스공제조합',
+        partnerOrg: r.partner_org || '한빛복구',
+        partnerManager: r.partner_manager || '미지정',
+        stage: r.stage || '01',
+        step13: Number(r.step13 || 1),
+        partnerStep6: Number(r.partner_step6 || 1),
+        partnerStatus: r.partner_status || '담당자 지정 · 내 차례',
+        insurerTask: r.insurer_task || 'progress',
+        insurerAction: r.insurer_action || '상세 보기',
+        insurerGuide: r.insurer_guide || '진행 중입니다.',
+        dueDate: due,
+        overdue: isOverdue,
+        partnerClaimAmt: Number(r.partner_claim_amt || 0),
+        insurerClaimAmt: Number(r.insurer_claim_amt || 0),
+        confirmedAmt: Number(r.confirmed_amt || 0),
+        receivedAmt: Number(r.received_amt || 0),
+        feeRate: Number(r.fee_rate || 0.12),
+        paidAmt: Number(r.paid_amt || 0),
+        claimStage: r.claim_stage || 'none',
+        claimReadStep: Number(r.claim_read_step || 0),
+        paidStatus: r.paid_status || '미지급'
+      };
+    }
+
+    function mapAppCaseToDb(c) {
+      return {
+        case_no: c.id,
+        received_date: c.date,
+        kind: c.kind,
+        facility: c.facility,
+        title: c.title,
+        address: c.address,
+        plate: c.plate,
+        insurer_org: c.insurerOrg,
+        partner_org: c.partnerOrg,
+        partner_manager: c.partnerManager,
+        stage: c.stage,
+        step13: c.step13,
+        partner_step6: c.partnerStep6,
+        partner_status: c.partnerStatus,
+        insurer_task: c.insurerTask,
+        insurer_action: c.insurerAction,
+        insurer_guide: c.insurerGuide,
+        due_date: c.dueDate,
+        partner_claim_amt: c.partnerClaimAmt,
+        insurer_claim_amt: c.insurerClaimAmt,
+        confirmed_amt: c.confirmedAmt,
+        received_amt: c.receivedAmt,
+        fee_rate: c.feeRate,
+        paid_amt: c.paidAmt,
+        claim_stage: c.claimStage,
+        claim_read_step: c.claimReadStep,
+        paid_status: c.paidStatus
+      };
+    }
+
+    async function initSupabaseAndLoad(showFeedback = false) {
+      const cfg = getSavedSbConfig();
+      if (!cfg.url || !cfg.anonKey || !window.supabase) {
+        dbConnected = false;
+        return false;
+      }
+      try {
+        sbClient = window.supabase.createClient(cfg.url, cfg.anonKey);
+        const { data: caseRows, error } = await sbClient.from('cases').select('*').order('received_date', { ascending: false });
+        if (error) throw error;
+        if (Array.isArray(caseRows) && caseRows.length > 0) {
+          state.cases = caseRows.map(mapDbCaseToApp);
+        }
+        const { data: rateRows } = await sbClient.from('insurer_rates').select('*').order('id', { ascending: true });
+        if (Array.isArray(rateRows) && rateRows.length > 0) {
+          state.insurerRates = rateRows.map(r => ({ id: 'ir' + r.id, name: r.name, overhead: r.overhead, fee: r.fee_rate, surveyFee: r.survey_fee }));
+        }
+        const { data: noticeRows } = await sbClient.from('notices').select('*').order('id', { ascending: false });
+        if (Array.isArray(noticeRows) && noticeRows.length > 0) {
+          state.notices = noticeRows.map(n => ({ id: n.id, title: n.title, summary: n.summary, content: n.content, date: n.published_date, read: false }));
+        }
+        dbConnected = true;
+        if (showFeedback) showToast('Supabase 실시간 DB와 연결되었습니다!');
+        render();
+        return true;
+      } catch (err) {
+        dbConnected = false;
+        if (showFeedback) showToast('Supabase 연결 실패: 주소와 키를 확인해 주세요.', 'error');
+        return false;
+      }
+    }
+
+    async function syncCaseToDb(c) {
+      if (!dbConnected || !sbClient || !c) return;
+      try {
+        const { error } = await sbClient.from('cases').upsert(mapAppCaseToDb(c), { onConflict: 'case_no' });
+        if (error) console.error('DB sync error:', error);
+      } catch (e) {}
+    }
+
+    function openDbConfigModal() {
+      const cfg = getSavedSbConfig();
+      openModal('Supabase 실시간 DB 연결 설정', `
+        <div class="space-y-3 text-xs">
+          <div class="p-3 rounded-xl ${dbConnected ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-amber-50 text-amber-800 border border-amber-200'}">
+            현재 상태: <strong>${dbConnected ? 'Supabase 실시간 DB 연결됨' : '로컬 임시 모드 (새로고침 시 초기화)'}</strong>
+          </div>
+          <p class="text-slate-500 leading-relaxed">Supabase 상단의 <strong>Connect</strong> 버튼 또는 <strong>Project Settings → API</strong>에서 <strong>Project URL</strong>과 <strong>anon / publishable key</strong>를 복사해 붙여넣으세요.</p>
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Supabase Project URL</label>
+            <input id="sb-url" type="text" value="${escapeHtml(cfg.url)}" placeholder="https://xxxxxxxx.supabase.co" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm font-mono" />
+          </div>
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Supabase Anon / Publishable Key</label>
+            <input id="sb-key" type="text" value="${escapeHtml(cfg.anonKey)}" placeholder="sb_publishable_... 또는 eyJhbGci..." class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm font-mono" />
+          </div>
+        </div>
+      `, `
+        <button type="button" onclick="clearDbConfig()" class="px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 cursor-pointer">연결 해제</button>
+        <button type="button" onclick="saveDbConfig()" class="px-4 py-2 rounded-xl bg-blue-700 text-white text-xs font-semibold cursor-pointer">저장 및 연결 테스트</button>
+      `);
+    }
+
+    async function saveDbConfig() {
+      const url = document.getElementById('sb-url').value.trim();
+      const anonKey = document.getElementById('sb-key').value.trim();
+      if (!url || !anonKey) { showToast('URL과 Key를 모두 입력해 주세요.', 'error'); return; }
+      try { localStorage.setItem('daehung_supabase_cfg', JSON.stringify({ url, anonKey })); } catch (e) {}
+      closeModal();
+      await initSupabaseAndLoad(true);
+    }
+
+    function clearDbConfig() {
+      try { localStorage.removeItem('daehung_supabase_cfg'); } catch (e) {}
+      dbConnected = false;
+      sbClient = null;
+      closeModal();
+      showToast('로컬 모드로 전환되었습니다.', 'info');
+      render();
+    }
+
+    const STAGE_LABELS = [
+      { key: '01', name: '01 업체 배정', short: '업체 배정' },
+      { key: '02', name: '02 보고·견적 확인', short: '보고·견적 확인' },
+      { key: '03', name: '03 기관 청구·수령', short: '기관 청구·수령' },
+      { key: '04', name: '04 업체 정산·종결', short: '업체 정산·종결' },
+      { key: 'done', name: '종료', short: '종료' }
+    ];
+
+    const state = {
+      user: null,
+      route: 'cases',
+      mobileMenuOpen: false,
+      notifOpen: false,
+      // 필터 상태
+      casesFilter: { tab: 'all', over7: false, sort: 'latest', q: '', kind: '전체', period: '전체', stage: '전체', status: '전체', facility: '전체', work: '전체', showDetailFilter: false },
+      claimsFilter: { kind: '전체', period: '전체', tab: 'all', startDate: '', endDate: '' },
+      receiptsFilter: { kind: '전체', period: '전체', tab: 'need_confirm', selectedId: null },
+      settlementsFilter: { company: '전체', payStatus: '전체', period: '전체', showCompanyBar: false, selectedIds: [] },
+      pricesFilter: { basis: '2026 표준품셈', cat: '전체', q: '' },
+      noticesTab: 'all',
+      accountsSearch: '',
+      homeFilter: { kind: '전체', period: '전체', showExtraAnalysis: false },
+      // 핵심 데이터
+      cases: [
+        {
+          id: 'DH-2026-1104', date: '2026-11-16', elapsedDays: 4, kind: '3종', facility: '가드레일',
+          title: '강변북로 구리방면 가드레일 12m 파손 복구', address: '서울 광진구 자양동 221-4', plate: '서울74사 8821',
+          insurerOrg: '버스공제조합', partnerOrg: '한빛복구', partnerManager: '박지훈',
+          stage: '02', step13: 5, partnerStep6: 2, partnerStatus: '최초견적 제출 · 내 차례',
+          insurerTask: 'todo', insurerAction: '이어서 적기', insurerGuide: '피해 차량 및 사고 경위 보완 입력이 필요합니다.',
+          dueDate: '2026-11-22', overdue: false,
+          partnerClaimAmt: 3450000, insurerClaimAmt: 3680000, confirmedAmt: 0, receivedAmt: 0, feeRate: 0.12, paidAmt: 0,
+          claimStage: 'need_write', claimReadStep: 1, paidStatus: '미지급'
+        },
+        {
+          id: 'DH-2026-1098', date: '2026-11-10', elapsedDays: 10, kind: '1종', facility: '신호등·지주',
+          title: '영동대로 삼성역 사거리 교통신호기 지주 추돌', address: '서울 강남구 삼성동 159', plate: '경기71아 4102',
+          insurerOrg: '버스공제조합', partnerOrg: '한빛복구', partnerManager: '미지정',
+          stage: '01', step13: 2, partnerStep6: 1, partnerStatus: '담당자 지정 · 내 차례',
+          insurerTask: 'progress', insurerAction: '진행 상세 보기', insurerGuide: '시공파트너사 현장 담당자 배정이 진행 중입니다.',
+          dueDate: '2026-11-18', overdue: true,
+          partnerClaimAmt: 0, insurerClaimAmt: 0, confirmedAmt: 0, receivedAmt: 0, feeRate: 0.12, paidAmt: 0,
+          claimStage: 'none', claimReadStep: 0, paidStatus: '미지급'
+        },
+        {
+          id: 'DH-2026-1085', date: '2026-10-27', elapsedDays: 24, kind: '3종', facility: '방음벽',
+          title: '올림픽대로 여의하류 방음판 6경간 교체', address: '서울 영등포구 여의도동 84-2', plate: '서울70바 1933',
+          insurerOrg: '화물공제조합', partnerOrg: '한빛복구', partnerManager: '박지훈',
+          stage: '03', step13: 9, partnerStep6: 5, partnerStatus: '대흥이엔씨 처리 중',
+          insurerTask: 'todo', insurerAction: '청구 서류 확인', insurerGuide: '보험사 청구서가 공개되었습니다. 내용을 확인해 주세요.',
+          dueDate: '2026-11-14', overdue: true,
+          partnerClaimAmt: 8200000, insurerClaimAmt: 8950000, confirmedAmt: 8600000, receivedAmt: 0, feeRate: 0.12, paidAmt: 0,
+          claimStage: 'wait_read', claimReadStep: 2, paidStatus: '미지급'
+        },
+        {
+          id: 'DH-2026-1071', date: '2026-10-19', elapsedDays: 32, kind: '1종', facility: '가로등',
+          title: '서부간선도로 고척교 인근 가로등주 전도 복구', address: '서울 구로구 고척동 63-1', plate: '인천72자 5509',
+          insurerOrg: '버스공제조합', partnerOrg: '한빛복구', partnerManager: '김태우',
+          stage: '04', step13: 11, partnerStep6: 6, partnerStatus: '완료',
+          insurerTask: 'done', insurerAction: '청구서 보기', insurerGuide: '보험금 수령 완료 후 업체 정산 대기 상태입니다.',
+          dueDate: '2026-11-05', overdue: false,
+          partnerClaimAmt: 4100000, insurerClaimAmt: 4480000, confirmedAmt: 4480000, receivedAmt: 4480000, feeRate: 0.12, paidAmt: 0,
+          claimStage: 'read_done', claimReadStep: 3, paidStatus: '지급 대기'
+        },
+        {
+          id: 'DH-2026-1062', date: '2026-10-11', elapsedDays: 40, kind: '3종', facility: '도로표지판',
+          title: '내부순환로 홍은램프 문형식 표지판 손상', address: '서울 서대문구 홍은동 412', plate: '서울75사 2048',
+          insurerOrg: '삼성화재', partnerOrg: '태성인프라', partnerManager: '정현수',
+          stage: '03', step13: 8, partnerStep6: 5, partnerStatus: '대흥이엔씨 처리 중',
+          insurerTask: 'progress', insurerAction: '상세 보기', insurerGuide: '보험사 청구서 작성 및 검토 단계입니다.',
+          dueDate: '2026-11-12', overdue: true,
+          partnerClaimAmt: 11200000, insurerClaimAmt: 12150000, confirmedAmt: 0, receivedAmt: 0, feeRate: 0.10, paidAmt: 0,
+          claimStage: 'need_write', claimReadStep: 1, paidStatus: '미지급'
+        },
+        {
+          id: 'DH-2026-1044', date: '2026-10-02', elapsedDays: 49, kind: '1종', facility: '중앙분리대',
+          title: '동부간선도로 월계교 중앙분리대 콘크리트 보수', address: '서울 노원구 월계동 501', plate: '경기78바 9912',
+          insurerOrg: '버스공제조합', partnerOrg: '태성인프라', partnerManager: '정현수',
+          stage: 'done', step13: 13, partnerStep6: 6, partnerStatus: '완료',
+          insurerTask: 'done', insurerAction: '청구서 보기', insurerGuide: '전체 정산 및 종결이 완료되었습니다.',
+          dueDate: '2026-10-28', overdue: false,
+          partnerClaimAmt: 5600000, insurerClaimAmt: 6100000, confirmedAmt: 5950000, receivedAmt: 5950000, feeRate: 0.10, paidAmt: 5355000,
+          claimStage: 'read_done', claimReadStep: 3, paidStatus: '지급 완료'
+        }
+      ],
+      notices: [
+        { id: 1, title: '[필독] 2026년 11월 도로시설물 복구 표준단가표 적용 안내', summary: '재료비·노무비 일부 항목 단가가 11월 1일 접수 건부터 갱신되었습니다.', date: '2026-11-15', read: false, content: '2026년 11월 1일 이후 신규 접수된 도로시설물 피해복구 건부터 개정된 표준단가표가 적용됩니다. 보험사·단가 관리 메뉴에서 세부 비목 단가를 확인하실 수 있습니다.' },
+        { id: 2, title: '시공파트너사 현장 사진 및 최초견적 등록 기한 준수 요청', summary: '현장 배정 후 48시간 이내 최초 사진 및 견적서 업로드를 권장합니다.', date: '2026-11-11', read: false, content: '신속한 보험사 협의 및 복구 일정 안내를 위해 담당자 지정 후 48시간 이내에 현장 전경/파손 부위 사진 및 최초견적을 등록해 주시기 바랍니다.' },
+        { id: 3, title: '이카운트 입출금 엑셀 자동 대조 기능 업데이트 안내', summary: '관리자 청구·정산 메뉴에서 은행 입출금 내역 자동 매칭이 지원됩니다.', date: '2026-11-03', read: true, content: '관리자 메뉴의 입출금 대조 페이지에서 이카운트 엑셀 파일을 업로드하면 보험금 수령 내역과 자동 매칭됩니다.' }
+      ],
+      notifications: [
+        { id: 'n1', text: '[DH-2026-1085] 보험사 청구서가 공개되었습니다.', time: '10분 전', read: false },
+        { id: 'n2', text: '[DH-2026-1098] 복구 예정일이 경과했습니다.', time: '1시간 전', read: false },
+        { id: 'n3', text: '11월 표준단가표 개정 공지가 등록되었습니다.', time: '어제', read: true }
+      ],
+      insurerRates: [
+        { id: 'ir1', name: '버스공제조합', overhead: '일반관리비 6% / 이윤 10% (천원 미만 절사)', fee: '12%', surveyFee: '150,000원' },
+        { id: 'ir2', name: '화물공제조합', overhead: '일반관리비 5% / 이윤 10% (백원 미만 절사)', fee: '12%', surveyFee: '150,000원' },
+        { id: 'ir3', name: '삼성화재', overhead: '일반관리비 6% / 이윤 12% (원단위 절사)', fee: '10%', surveyFee: '180,000원' }
+      ],
+      unitPrices: [
+        { id: 'up1', cat: '재료비', item: '가드레일 보 (W형 3.2T)', spec: '4,000×310×3.2mm', unit: '본', price: 84000, basis: '조달청 2026-11' },
+        { id: 'up2', cat: '재료비', item: '방음판 (알루미늄 흡음형)', spec: '1,960×500×95mm', unit: '매', price: 142000, basis: '표준시장단가' },
+        { id: 'up3', cat: '노무비', item: '보통인부', spec: '도로시설물 현장 보조', unit: '인', price: 165000, basis: '대한건설협회 2026 하반기' },
+        { id: 'up4', cat: '노무비', item: '철공(특수용접)', spec: '지주 및 브라켓 설치', unit: '인', price: 248000, basis: '대한건설협회 2026 하반기' },
+        { id: 'up5', cat: '경비', item: '신호수 및 교통통제차량', spec: '사인보드 카 1일 임차', unit: '대·일', price: 380000, basis: '표준품셈 기계경비' }
+      ],
+      adminAccounts: [
+        { id: 'adm1', name: '이서연', loginId: 'daehung', noti: 'SMS · 이메일', status: '활성' },
+        { id: 'adm2', name: '최준호', loginId: 'dh_choi', noti: '이메일', status: '활성' }
+      ],
+      partnerCompanies: [
+        { id: 'pc1', name: '한빛복구', grade: 'A등급', phone: '02-441-8820', inProgress: 3, waitingPay: 1, accountCount: '3 / 3' },
+        { id: 'pc2', name: '태성인프라', grade: 'A등급', phone: '031-712-5590', inProgress: 1, waitingPay: 0, accountCount: '2 / 3' }
+      ],
+      orgAccounts: [
+        { id: 'oa1', name: '김민수', loginId: 'insurer', role: '손해사정사', org: '버스공제조합', noti: 'SMS · 이메일', status: '활성' },
+        { id: 'oa2', name: '정유진', loginId: 'hwamul_01', role: '보상담당자', org: '화물공제조합', noti: '이메일', status: '활성' }
+      ],
+      partnerSubAccounts: [
+        { id: 'pa1', name: '박지훈 (대표 계정)', email: 'partner', phone: '010-6315-8821', status: '활성' },
+        { id: 'pa2', name: '김태우 (부계정 1)', email: 'hanbit_sub1@hanbitfix.co.kr', phone: '010-3321-1904', status: '활성' },
+        { id: 'pa3', name: '오민석 (부계정 2)', email: 'hanbit_sub2@hanbitfix.co.kr', phone: '010-8109-4427', status: '중지' }
+      ],
+      reconcileLogs: [
+        { id: 'rc1', date: '2026-11-14', bank: '기업은행 (주거래)', desc: '버스공제조합 DH-2026-1071', amount: 4480000, matchedCase: 'DH-2026-1071', status: '매칭 완료' },
+        { id: 'rc2', date: '2026-11-02', bank: '기업은행 (주거래)', desc: '버스공제조합 DH-2026-1044', amount: 5950000, matchedCase: 'DH-2026-1044', status: '매칭 완료' }
+      ]
+    };
+
+    let chartInstances = [];
+
+    // =========================================================================
+    // 2. 유틸리티 함수 (포맷, 토스트, 모달)
+    // =========================================================================
+    function won(n) {
+      return Number(n || 0).toLocaleString('ko-KR') + '원';
+    }
+    function escapeHtml(str) {
+      return String(str ?? '').replace(/[&<>"']/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+    }
+    function showToast(msg, type = 'success') {
+      const root = document.getElementById('toast-root');
+      const el = document.createElement('div');
+      const bg = type === 'error' ? 'bg-rose-600' : type === 'info' ? 'bg-slate-800' : 'bg-blue-700';
+      el.className = `${bg} text-white text-sm font-medium px-4 py-3 rounded-xl shadow-lg flex items-center gap-2 pointer-events-auto transition-all`;
+      el.innerHTML = `<span>${escapeHtml(msg)}</span>`;
+      root.appendChild(el);
+      setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }, 2800);
+    }
+    function openModal(title, bodyHtml, footerHtml = '') {
+      const root = document.getElementById('modal-root');
+      root.innerHTML = `
+        <div id="modal-backdrop" class="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden border border-slate-200">
+            <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+              <h3 class="text-base font-bold text-slate-900">${escapeHtml(title)}</h3>
+              <button type="button" onclick="closeModal()" class="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100">
+                <i data-lucide="x" class="w-4 h-4"></i>
+              </button>
+            </div>
+            <div class="p-5 overflow-y-auto scrollbar-thin text-sm text-slate-700 space-y-4">${bodyHtml}</div>
+            ${footerHtml ? `<div class="px-5 py-3.5 border-t border-slate-100 bg-slate-50 flex justify-end gap-2">${footerHtml}</div>` : ''}
+          </div>
+        </div>
+      `;
+      if (window.lucide) lucide.createIcons();
+    }
+    function closeModal() {
+      document.getElementById('modal-root').innerHTML = '';
+    }
+
+    // =========================================================================
+    // 3. 로그인 / 로그아웃 및 메뉴 정의
+    // =========================================================================
+    function loginWithCredentials(idInput, pwInput) {
+      const id = (idInput || '').trim();
+      const pw = (pwInput || '').trim();
+      const acc = ACCOUNTS.find(a => (a.id === id || a.alias === id) && a.pw === pw);
+      if (!acc) {
+        showToast('아이디 또는 비밀번호가 일치하지 않습니다. (공통 비밀번호: 1234)', 'error');
+        return;
+      }
+      state.user = { ...acc };
+      state.route = acc.role === 'daehung' ? 'home' : 'cases';
+      state.mobileMenuOpen = false;
+      state.notifOpen = false;
+      showToast(`${acc.name}님(${acc.roleLabel})으로 로그인되었습니다.`);
+      render();
+    }
+
+    function quickLogin(id) {
+      loginWithCredentials(id, '1234');
+    }
+
+    function logout() {
+      state.user = null;
+      state.notifOpen = false;
+      destroyCharts();
+      render();
+    }
+
+    function getMenusForRole(role) {
+      if (role === 'insurer') {
+        return [
+          { id: 'cases', label: '의뢰 진행확인', icon: 'clipboard-list' },
+          { id: 'claims', label: '정산 관리', icon: 'receipt' },
+          { id: 'settings', label: '내 정보·알림 설정', icon: 'bell-ring' },
+          { id: 'notices', label: '공지사항', icon: 'megaphone' }
+        ];
+      }
+      if (role === 'partner') {
+        return [
+          { id: 'cases', label: '내 피해현장', icon: 'wrench' },
+          { id: 'accounts', label: '계정 관리', icon: 'users' },
+          { id: 'settings', label: '내 정보·알림 설정', icon: 'bell-ring' },
+          { id: 'notices', label: '공지사항', icon: 'megaphone' }
+        ];
+      }
+      return [
+        { id: 'home', label: '홈', icon: 'layout-dashboard' },
+        { id: 'cases', label: '피해현장·업체 배정', icon: 'map-pin' },
+        {
+          id: 'claims_group', label: '청구·정산', icon: 'wallet', children: [
+            { id: 'claims', label: '보험사 청구' },
+            { id: 'receipts', label: '보험금 수령' },
+            { id: 'settlements', label: '업체 청구·정산' },
+            { id: 'reconcile', label: '입출금 대조' }
+          ]
+        },
+        {
+          id: 'price_group', label: '보험사·단가 관리', icon: 'calculator', children: [
+            { id: 'rates', label: '보험사 요율' },
+            { id: 'prices', label: '단가표' }
+          ]
+        },
+        {
+          id: 'acc_group', label: '계정 관리', icon: 'user-cog', children: [
+            { id: 'acc_admin', label: '관리자 계정' },
+            { id: 'acc_partner', label: '복구업체 계정' },
+            { id: 'acc_org', label: '보험사·손해사정 계정' }
+          ]
+        },
+        { id: 'settings', label: '내 정보·알림 설정', icon: 'bell-ring' },
+        { id: 'notices', label: '공지사항', icon: 'megaphone' }
+      ];
+    }
+
+    function getCurrentRouteTitle() {
+      const map = {
+        home: '홈',
+        cases: state.user?.role === 'insurer' ? '의뢰 진행확인' : state.user?.role === 'partner' ? '내 피해현장' : '피해현장·업체 배정',
+        claims: state.user?.role === 'insurer' ? '정산 관리' : '보험사 청구',
+        receipts: '보험금 수령',
+        settlements: '업체 청구·정산',
+        reconcile: '입출금 대조',
+        rates: '보험사 요율',
+        prices: '단가표',
+        accounts: '계정 관리',
+        acc_admin: '관리자 계정',
+        acc_partner: '복구업체 계정',
+        acc_org: '보험사·손해사정 계정',
+        settings: '내 정보·알림 설정',
+        notices: '공지사항'
+      };
+      return map[state.route] || '대시보드';
+    }
+
+    function navigate(routeId) {
+      state.route = routeId;
+      state.mobileMenuOpen = false;
+      state.notifOpen = false;
+      render();
+    }
+
+    // =========================================================================
+    // 4. 로그인 화면 렌더링
+    // =========================================================================
+    function renderLogin() {
+      return `
+        <div class="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+          <div class="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-md p-8">
+            <div class="text-center mb-7">
+              <div class="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-blue-700 text-white font-bold text-lg mb-3 shadow-sm">대흥</div>
+              <h1 class="text-2xl font-bold text-blue-700 tracking-tight">대흥이엔씨 시스템</h1>
+              <p class="text-sm text-slate-500 mt-1">통합 복구 관리 시스템 · 복구ON</p>
+            </div>
+            <form id="login-form" class="space-y-4">
+              <div>
+                <input id="login-id" type="text" placeholder="아이디" autocomplete="username"
+                  class="w-full px-4 py-3 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600" />
+              </div>
+              <div>
+                <input id="login-pw" type="password" placeholder="비밀번호" autocomplete="current-password"
+                  class="w-full px-4 py-3 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600" />
+              </div>
+              <button type="submit"
+                class="w-full py-3 rounded-xl bg-blue-700 hover:bg-blue-800 text-white font-semibold text-sm transition shadow-sm cursor-pointer">
+                로그인
+              </button>
+            </form>
+
+            <div class="mt-6 p-4 rounded-xl bg-slate-50 border border-dashed border-slate-300 text-xs text-slate-600 space-y-2.5">
+              <div class="font-semibold text-slate-800">[테스트 계정 안내] (공통 비밀번호: 1234 · 클릭 시 바로 로그인)</div>
+              <div class="grid grid-cols-1 gap-1.5">
+                <button type="button" onclick="quickLogin('insurer')" class="flex items-center justify-between px-3 py-2 rounded-lg bg-white border border-slate-200 hover:border-blue-400 hover:bg-blue-50/50 transition text-left cursor-pointer">
+                  <span>📝 <strong>보험사·공제조합</strong> (손해사정사)</span>
+                  <span class="font-mono text-blue-700">insurer / 1234</span>
+                </button>
+                <button type="button" onclick="quickLogin('daehung')" class="flex items-center justify-between px-3 py-2 rounded-lg bg-white border border-slate-200 hover:border-blue-400 hover:bg-blue-50/50 transition text-left cursor-pointer">
+                  <span>👤 <strong>대흥이엔씨</strong> (최고권한 관리자)</span>
+                  <span class="font-mono text-blue-700">daehung / 1234</span>
+                </button>
+                <button type="button" onclick="quickLogin('partner')" class="flex items-center justify-between px-3 py-2 rounded-lg bg-white border border-slate-200 hover:border-blue-400 hover:bg-blue-50/50 transition text-left cursor-pointer">
+                  <span>👷 <strong>시공파트너사</strong> (현장 복구업체)</span>
+                  <span class="font-mono text-blue-700">partner / 1234</span>
+                </button>
+              </div>
+              <div class="text-[11px] text-slate-400 pt-0.5">* 기존 샘플 아이디(sontest, dhadmin, matest / 1234)도 동일하게 지원됩니다.</div>
+              <div class="pt-2 border-t border-slate-200 flex items-center justify-between">
+                <span class="text-[11px] font-semibold ${dbConnected ? 'text-emerald-700' : 'text-amber-700'}">
+                  ${dbConnected ? '● Supabase 실시간 DB 연결됨' : '○ 로컬 임시 모드'}
+                </span>
+                <button type="button" onclick="openDbConfigModal()" class="text-[11px] font-semibold text-blue-700 hover:underline cursor-pointer">DB 연결 설정</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // =========================================================================
+    // 5. 공통 레이아웃 (사이드바 + 상단 헤더)
+    // =========================================================================
+    function renderShell(contentHtml) {
+      const menus = getMenusForRole(state.user.role);
+      const unreadNotifs = state.notifications.filter(n => !n.read).length;
+      const unreadNotices = state.notices.filter(n => !n.read).length;
+
+      const navHtml = menus.map(m => {
+        if (m.children) {
+          const anyChildActive = m.children.some(c => c.id === state.route);
+          return `
+            <div class="space-y-1">
+              <div class="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-2 mt-2">
+                <i data-lucide="${m.icon}" class="w-3.5 h-3.5"></i>
+                <span>${m.label}</span>
+              </div>
+              <div class="space-y-0.5 pl-2">
+                ${m.children.map(c => {
+                  const active = state.route === c.id;
+                  return `
+                    <button type="button" onclick="navigate('${c.id}')"
+                      class="w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition flex items-center justify-between cursor-pointer ${active ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'}">
+                      <span>${c.label}</span>
+                    </button>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+          `;
+        }
+        const active = state.route === m.id;
+        return `
+          <button type="button" onclick="navigate('${m.id}')"
+            class="w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium transition flex items-center justify-between cursor-pointer ${active ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900'}">
+            <span class="flex items-center gap-2.5">
+              <i data-lucide="${m.icon}" class="w-4 h-4"></i>
+              <span>${m.label}</span>
+            </span>
+            ${m.id === 'notices' && unreadNotices > 0 ? `<span class="px-1.5 py-0.5 text-[11px] font-semibold rounded-full bg-rose-100 text-rose-700">${unreadNotices}</span>` : ''}
+          </button>
+        `;
+      }).join('');
+
+      return `
+        <div class="min-h-screen flex bg-slate-50">
+          <!-- 모바일 오버레이 -->
+          ${state.mobileMenuOpen ? `<div onclick="toggleMobileMenu()" class="fixed inset-0 bg-slate-900/40 z-30 lg:hidden"></div>` : ''}
+
+          <!-- 좌측 사이드바 -->
+          <aside class="${state.mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 fixed lg:static inset-y-0 left-0 z-40 w-64 bg-white border-r border-slate-200 flex flex-col transition-transform duration-200 shrink-0">
+            <div class="p-5 border-b border-slate-100">
+              <div class="flex items-center gap-2.5">
+                <div class="w-8 h-8 rounded-lg bg-blue-700 text-white font-bold text-xs flex items-center justify-center">대흥</div>
+                <div>
+                  <div class="text-sm font-bold text-slate-900">(주)대흥이엔씨</div>
+                  <div class="text-[11px] text-slate-500">나의 업무 공간 / ${escapeHtml(state.user.roleLabel)}</div>
+                </div>
+              </div>
+            </div>
+            <nav class="flex-1 p-3 space-y-1 overflow-y-auto scrollbar-thin">
+              ${navHtml}
+            </nav>
+            <div class="p-4 border-t border-slate-100 text-[11px] text-slate-400">
+              보험사고 피해복구 업무 시스템
+            </div>
+          </aside>
+
+          <!-- 메인 영역 -->
+          <div class="flex-1 flex flex-col min-w-0">
+            <header class="h-14 bg-white border-b border-slate-200 px-4 lg:px-6 flex items-center justify-between sticky top-0 z-20">
+              <div class="flex items-center gap-3 min-w-0">
+                <button type="button" onclick="toggleMobileMenu()" class="lg:hidden p-2 rounded-lg text-slate-600 hover:bg-slate-100 cursor-pointer">
+                  <i data-lucide="menu" class="w-5 h-5"></i>
+                </button>
+                <div class="text-sm text-slate-500 truncate">
+                  <span class="hover:text-slate-800 cursor-pointer" onclick="navigate('${state.user.role === 'daehung' ? 'home' : 'cases'}')">홈</span>
+                  <span class="mx-1.5 text-slate-300">/</span>
+                  <span class="font-semibold text-slate-900">${escapeHtml(getCurrentRouteTitle())}</span>
+                </div>
+              </div>
+              <div class="flex items-center gap-3 relative">
+                <button type="button" onclick="openDbConfigModal()" class="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border cursor-pointer ${dbConnected ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}">
+                  <span>${dbConnected ? 'DB 실시간 연동' : '로컬 모드'}</span>
+                </button>
+                <button type="button" onclick="toggleNotif()" class="relative p-2 rounded-lg text-slate-600 hover:bg-slate-100 cursor-pointer" title="알림">
+                  <i data-lucide="bell" class="w-4 h-4"></i>
+                  ${unreadNotifs > 0 ? `<span class="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-600 text-white text-[10px] font-bold flex items-center justify-center">${unreadNotifs}</span>` : ''}
+                </button>
+                ${state.notifOpen ? `
+                  <div class="absolute right-0 top-12 w-80 bg-white rounded-xl shadow-xl border border-slate-200 p-3 z-50">
+                    <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                      <span class="text-xs font-bold text-slate-800">알림 (${unreadNotifs})</span>
+                      <button type="button" onclick="markAllNotifsRead()" class="text-[11px] text-blue-600 hover:underline cursor-pointer">모두 읽음</button>
+                    </div>
+                    <div class="divide-y divide-slate-100 max-h-64 overflow-y-auto mt-1">
+                      ${state.notifications.map(n => `
+                        <div class="py-2.5 text-xs ${n.read ? 'text-slate-400' : 'text-slate-800 font-medium'}">
+                          <div>${escapeHtml(n.text)}</div>
+                          <div class="text-[10px] text-slate-400 mt-0.5">${escapeHtml(n.time)}</div>
+                        </div>
+                      `).join('')}
+                    </div>
+                  </div>
+                ` : ''}
+                <div class="hidden sm:flex items-center gap-1.5 text-sm text-slate-700">
+                  <span class="font-semibold">${escapeHtml(state.user.name)}님</span>
+                  <span class="text-xs text-slate-400">(${escapeHtml(state.user.org)})</span>
+                </div>
+                <button type="button" onclick="logout()" class="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-700 hover:bg-slate-100 cursor-pointer">
+                  로그아웃
+                </button>
+              </div>
+            </header>
+
+            <main class="flex-1 p-4 lg:p-6 max-w-7xl w-full mx-auto space-y-6">
+              ${contentHtml}
+            </main>
+          </div>
+        </div>
+      `;
+    }
+
+    function toggleMobileMenu() { state.mobileMenuOpen = !state.mobileMenuOpen; render(); }
+    function toggleNotif() { state.notifOpen = !state.notifOpen; render(); }
+    function markAllNotifsRead() { state.notifications.forEach(n => n.read = true); render(); }
+
+    // =========================================================================
+    // 6. 역할 1: 보험사·공제조합 화면들
+    // =========================================================================
+    function renderInsurerCases() {
+      const f = state.casesFilter;
+      let list = state.cases.filter(c => {
+        if (f.tab === 'todo' && c.insurerTask !== 'todo') return false;
+        if (f.tab === 'progress' && c.insurerTask !== 'progress') return false;
+        if (f.tab === 'done' && c.insurerTask !== 'done') return false;
+        if (f.over7 && c.elapsedDays <= 7) return false;
+        if (f.q) {
+          const q = f.q.toLowerCase();
+          if (!`${c.id} ${c.title} ${c.address} ${c.facility}`.toLowerCase().includes(q)) return false;
+        }
+        return true;
+      });
+      list.sort((a, b) => f.sort === 'oldest' ? a.elapsedDays < b.elapsedDays ? 1 : -1 : a.elapsedDays > b.elapsedDays ? 1 : -1);
+
+      const cntAll = state.cases.length;
+      const cntTodo = state.cases.filter(c => c.insurerTask === 'todo').length;
+      const cntProg = state.cases.filter(c => c.insurerTask === 'progress').length;
+      const cntDone = state.cases.filter(c => c.insurerTask === 'done').length;
+      const cntOver7 = state.cases.filter(c => c.elapsedDays > 7).length;
+
+      return `
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 class="text-xl font-bold text-slate-900">의뢰 진행확인</h2>
+            <p class="text-sm text-slate-500 mt-0.5">접수된 피해복구 의뢰의 진행 상태와 할 일을 한눈에 확인합니다.</p>
+          </div>
+          <button type="button" onclick="openNewRequestModal()" class="px-4 py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-sm font-semibold flex items-center gap-1.5 self-start cursor-pointer shadow-xs">
+            <i data-lucide="plus" class="w-4 h-4"></i>
+            <span>복구의뢰 접수</span>
+          </button>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 space-y-3">
+          <div class="flex flex-wrap items-center gap-2">
+            ${[
+              ['all', '전체', cntAll],
+              ['todo', '내 할 일', cntTodo],
+              ['progress', '처리 중', cntProg],
+              ['done', '완료', cntDone]
+            ].map(([k, lbl, cnt]) => `
+              <button type="button" onclick="setCaseTab('${k}')"
+                class="px-3 py-1.5 rounded-full text-xs font-semibold transition cursor-pointer ${f.tab === k ? 'bg-blue-700 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}">
+                ${lbl} ${cnt}
+              </button>
+            `).join('')}
+            <label class="ml-auto flex items-center gap-2 text-xs font-medium text-slate-700 cursor-pointer">
+              <input type="checkbox" ${f.over7 ? 'checked' : ''} onchange="toggleOver7(this.checked)" class="rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
+              <span>접수 후 7일 지난 건만 (${cntOver7})</span>
+            </label>
+          </div>
+          <div class="flex flex-col sm:flex-row gap-2.5">
+            <div class="relative flex-1">
+              <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
+              <input type="text" value="${escapeHtml(f.q)}" oninput="setCaseQuery(this.value)" placeholder="접수번호·피해 내용·주소로 찾기"
+                class="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600" />
+            </div>
+            <select onchange="setCaseSort(this.value)" class="px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white">
+              <option value="latest" ${f.sort === 'latest' ? 'selected' : ''}>최신순</option>
+              <option value="oldest" ${f.sort === 'oldest' ? 'selected' : ''}>오래된순</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="space-y-3">
+          ${list.length === 0 ? `<div class="bg-white rounded-2xl border border-slate-200 p-10 text-center text-sm text-slate-400">조건에 맞는 의뢰 건이 없습니다.</div>` : list.map(c => {
+            const pct = Math.round((c.step13 / 13) * 100);
+            return `
+              <div class="bg-white rounded-2xl border border-slate-200 p-5 hover:border-blue-300 transition space-y-3">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <div class="flex items-center gap-2 text-xs">
+                    <span class="font-mono font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md">${escapeHtml(c.id)}</span>
+                    <span class="text-slate-400">${escapeHtml(c.date)}</span>
+                    <span class="px-2 py-0.5 rounded-md font-semibold ${c.elapsedDays > 7 ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-600'}">${c.elapsedDays}일째</span>
+                  </div>
+                  <span class="text-xs text-slate-500 font-medium">업체 배정 · 대흥이엔씨 (${escapeHtml(c.partnerOrg)})</span>
+                </div>
+                <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div class="space-y-1">
+                    <h3 class="text-base font-bold text-slate-900">${escapeHtml(c.title)}</h3>
+                    <p class="text-xs text-slate-500">${escapeHtml(c.address)} · ${escapeHtml(c.facility)} · ${escapeHtml(c.insurerGuide)}</p>
+                  </div>
+                  <button type="button" onclick="openInsurerCaseAction('${c.id}')"
+                    class="px-4 py-2 rounded-xl text-xs font-semibold shrink-0 cursor-pointer ${c.insurerTask === 'todo' ? 'bg-blue-700 text-white hover:bg-blue-800' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}">
+                    ${escapeHtml(c.insurerAction)}
+                  </button>
+                </div>
+                <div class="space-y-1">
+                  <div class="flex justify-between text-[11px] text-slate-500">
+                    <span>진행 단계 (${c.step13} / 13)</span>
+                    <span>${pct}%</span>
+                  </div>
+                  <div class="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
+                    <div class="h-full bg-blue-600 rounded-full" style="width:${pct}%"></div>
+                  </div>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+    }
+
+    function renderInsurerClaims() {
+      const f = state.claimsFilter;
+      const claimCases = state.cases.filter(c => c.insurerClaimAmt > 0);
+      const filtered = claimCases.filter(c => {
+        if (f.kind !== '전체' && c.kind !== f.kind) return false;
+        if (f.tab === 'unread' && c.claimReadStep >= 3) return false;
+        if (f.tab === 'read' && c.claimReadStep < 3) return false;
+        return true;
+      });
+      const unreadCnt = claimCases.filter(c => c.claimReadStep < 3).length;
+      const readCnt = claimCases.filter(c => c.claimReadStep >= 3).length;
+
+      return `
+        <div>
+          <h2 class="text-xl font-bold text-slate-900">정산 관리</h2>
+          <p class="text-sm text-slate-500 mt-0.5">공개된 보험사 청구서를 열람하고 내용을 확인합니다.</p>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 space-y-3">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="text-xs font-semibold text-slate-500 mr-1">구분</span>
+            ${['전체', '3종', '1종'].map(k => `
+              <button type="button" onclick="state.claimsFilter.kind='${k}'; render();"
+                class="px-3 py-1 rounded-lg text-xs font-semibold cursor-pointer ${f.kind === k ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700'}">${k}</button>
+            `).join('')}
+            <span class="text-xs font-semibold text-slate-500 ml-3 mr-1">조회 기간</span>
+            ${['전체', '최근 1주', '1개월', '3개월'].map(p => `
+              <button type="button" onclick="state.claimsFilter.period='${p}'; render();"
+                class="px-2.5 py-1 rounded-lg text-xs font-medium cursor-pointer ${f.period === p ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-slate-50 text-slate-600 border border-slate-200'}">${p}</button>
+            `).join('')}
+          </div>
+          <div class="flex gap-2 border-t border-slate-100 pt-3">
+            ${[
+              ['unread', `확인 전 ${unreadCnt}`],
+              ['read', `열람 완료 ${readCnt}`],
+              ['all', `전체 ${claimCases.length}`]
+            ].map(([k, lbl]) => `
+              <button type="button" onclick="state.claimsFilter.tab='${k}'; render();"
+                class="px-3 py-1.5 rounded-full text-xs font-semibold cursor-pointer ${f.tab === k ? 'bg-blue-700 text-white' : 'bg-slate-100 text-slate-700'}">${lbl}</button>
+            `).join('')}
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-slate-200 overflow-x-auto">
+          <table class="w-full text-left text-sm min-w-[640px]">
+            <thead class="bg-slate-50 border-b border-slate-200 text-xs text-slate-500">
+              <tr>
+                <th class="px-5 py-3.5 font-semibold">피해현장</th>
+                <th class="px-5 py-3.5 font-semibold">청구액</th>
+                <th class="px-5 py-3.5 font-semibold">진행 (공개 → 열람 → 내용 확인)</th>
+                <th class="px-5 py-3.5 font-semibold text-right">다음 행동</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              ${filtered.map(c => `
+                <tr class="hover:bg-slate-50/70">
+                  <td class="px-5 py-4">
+                    <div class="flex items-center gap-2">
+                      <span class="font-mono text-xs font-semibold text-blue-700">${escapeHtml(c.id)}</span>
+                      <span class="px-1.5 py-0.5 rounded text-[11px] font-semibold bg-slate-100 text-slate-700">${escapeHtml(c.kind)}</span>
+                    </div>
+                    <div class="font-semibold text-slate-900 mt-0.5">${escapeHtml(c.title)}</div>
+                  </td>
+                  <td class="px-5 py-4 font-bold text-slate-900">${won(c.insurerClaimAmt)}</td>
+                  <td class="px-5 py-4">
+                    <div class="flex items-center gap-1.5 text-xs">
+                      ${['공개', '열람', '내용 확인'].map((s, idx) => {
+                        const done = c.claimReadStep >= idx + 1;
+                        return `<span class="px-2 py-0.5 rounded-full font-medium ${done ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-400'}">${s}</span>`;
+                      }).join('<span class="text-slate-300">→</span>')}
+                    </div>
+                  </td>
+                  <td class="px-5 py-4 text-right">
+                    <button type="button" onclick="openClaimDetailModal('${c.id}')" class="px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-semibold cursor-pointer">
+                      청구서 보기
+                    </button>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    // =========================================================================
+    // 7. 역할 2: 대흥이엔씨 최고권한 관리자 화면들
+    // =========================================================================
+    function renderDaehungHome() {
+      const f = state.homeFilter;
+      const filtered = state.cases.filter(c => f.kind === '전체' || c.kind === f.kind);
+      const totalCnt = filtered.length;
+      const progCnt = filtered.filter(c => c.stage !== 'done').length;
+      const doneCnt = filtered.filter(c => c.stage === 'done').length;
+      const overdueCnt = filtered.filter(c => c.overdue && c.stage !== 'done').length;
+
+      const s1 = filtered.filter(c => c.stage === '01').length;
+      const s2 = filtered.filter(c => c.stage === '02').length;
+      const s3 = filtered.filter(c => c.stage === '03').length;
+      const s4 = filtered.filter(c => c.stage === '04').length;
+
+      const sumClaim = filtered.reduce((acc, c) => acc + c.insurerClaimAmt, 0);
+      const sumConfirm = filtered.reduce((acc, c) => acc + c.confirmedAmt, 0);
+      const sumRecv = filtered.reduce((acc, c) => acc + c.receivedAmt, 0);
+      const sumPaid = filtered.reduce((acc, c) => acc + c.paidAmt, 0);
+      const unreadNotices = state.notices.filter(n => !n.read).length;
+
+      return `
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 class="text-xl font-bold text-slate-900">대흥이엔씨 홈 대시보드</h2>
+            <p class="text-sm text-slate-500 mt-0.5">전체 피해현장 진행 현황과 청구·수령·지급 금액 흐름을 통합 관리합니다.</p>
+          </div>
+          <button type="button" onclick="openNewRequestModal()" class="px-4 py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-sm font-semibold flex items-center gap-1.5 self-start cursor-pointer">
+            <i data-lucide="plus" class="w-4 h-4"></i>
+            <span>피해현장 추가</span>
+          </button>
+        </div>
+
+        ${unreadNotices > 0 ? `
+          <div class="bg-blue-50 border border-blue-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div class="flex items-center gap-2.5 text-sm text-blue-900">
+              <span class="px-2 py-0.5 rounded-full bg-rose-600 text-white text-xs font-bold">미확인</span>
+              <span class="font-medium">${escapeHtml(state.notices.find(n => !n.read)?.title || '')}</span>
+            </div>
+            <button type="button" onclick="navigate('notices')" class="text-xs font-semibold text-blue-700 hover:underline shrink-0 cursor-pointer">
+              전체 ${state.notices.length}건 · 미확인 ${unreadNotices} →
+            </button>
+          </div>
+        ` : ''}
+
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 flex flex-wrap items-center gap-2">
+          <span class="text-xs font-semibold text-slate-500 mr-1">구분</span>
+          ${['전체', '3종', '1종'].map(k => `
+            <button type="button" onclick="state.homeFilter.kind='${k}'; render();"
+              class="px-3 py-1 rounded-lg text-xs font-semibold cursor-pointer ${f.kind === k ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700'}">${k}</button>
+          `).join('')}
+          <span class="text-xs font-semibold text-slate-500 ml-3 mr-1">조회 기간(접수일)</span>
+          ${['전체', '최근 1주', '1개월', '3개월'].map(p => `
+            <button type="button" onclick="state.homeFilter.period='${p}'; render();"
+              class="px-2.5 py-1 rounded-lg text-xs font-medium cursor-pointer ${f.period === p ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-slate-50 text-slate-600 border border-slate-200'}">${p}</button>
+          `).join('')}
+        </div>
+
+        <!-- 요약 지표 카드 4개 -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4">
+            <div class="text-xs text-slate-500 font-medium">기간 내 접수</div>
+            <div class="text-2xl font-bold text-slate-900 mt-1">${totalCnt}건</div>
+          </div>
+          <div class="bg-white rounded-2xl border border-slate-200 p-4">
+            <div class="text-xs text-slate-500 font-medium">진행 중</div>
+            <div class="text-2xl font-bold text-blue-700 mt-1">${progCnt}건</div>
+          </div>
+          <div class="bg-white rounded-2xl border border-slate-200 p-4">
+            <div class="text-xs text-slate-500 font-medium">종료</div>
+            <div class="text-2xl font-bold text-emerald-600 mt-1">${doneCnt}건</div>
+          </div>
+          <div class="bg-white rounded-2xl border border-slate-200 p-4">
+            <div class="text-xs text-slate-500 font-medium">예정일 지남</div>
+            <div class="text-2xl font-bold text-rose-600 mt-1">${overdueCnt}건</div>
+          </div>
+        </div>
+
+        <!-- 업무 단계 카드 & 금액 흐름 카드 -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div class="bg-white rounded-2xl border border-slate-200 p-5 space-y-3">
+            <div class="flex items-center justify-between">
+              <h3 class="text-sm font-bold text-slate-900">업무 단계 현황</h3>
+              <button type="button" onclick="navigate('cases')" class="text-xs text-blue-700 font-semibold hover:underline cursor-pointer">전체 현장 보기 →</button>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              ${[
+                ['01 업체 배정', s1, false],
+                ['02 보고·견적 확인', s2, s2 >= s1 && s2 >= s3],
+                ['03 기관 청구·수령', s3, s3 > s2],
+                ['04 업체 정산·종결', s4, false]
+              ].map(([lbl, cnt, maxBadge]) => `
+                <div class="p-3 rounded-xl bg-slate-50 border border-slate-100">
+                  <div class="flex items-center justify-between gap-1">
+                    <span class="text-xs text-slate-600 font-medium">${lbl}</span>
+                    ${maxBadge ? `<span class="px-1.5 py-0.5 text-[10px] font-bold rounded bg-blue-100 text-blue-700">가장 많음</span>` : ''}
+                  </div>
+                  <div class="text-lg font-bold text-slate-900 mt-1">${cnt}건</div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+
+          <div class="bg-white rounded-2xl border border-slate-200 p-5 space-y-3">
+            <h3 class="text-sm font-bold text-slate-900">금액 흐름</h3>
+            <div class="grid grid-cols-2 gap-3">
+              <div class="p-3 rounded-xl bg-slate-50 border border-slate-100">
+                <div class="text-xs text-slate-500">1 기관 청구</div>
+                <div class="text-base font-bold text-slate-900 mt-1">${won(sumClaim)}</div>
+              </div>
+              <div class="p-3 rounded-xl bg-slate-50 border border-slate-100">
+                <div class="text-xs text-slate-500">2 보험사 확정</div>
+                <div class="text-base font-bold text-blue-700 mt-1">${won(sumConfirm)}</div>
+              </div>
+              <div class="p-3 rounded-xl bg-slate-50 border border-slate-100">
+                <div class="text-xs text-slate-500">3 보험금 수령</div>
+                <div class="text-base font-bold text-emerald-700 mt-1">${won(sumRecv)}</div>
+              </div>
+              <div class="p-3 rounded-xl bg-slate-50 border border-slate-100">
+                <div class="text-xs text-slate-500">4 업체 지급</div>
+                <div class="text-base font-bold text-slate-800 mt-1">${won(sumPaid)}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 지금 처리할 일 카드 -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-5 space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-bold text-slate-900">지금 처리할 일</h3>
+            <button type="button" onclick="navigate('cases')" class="text-xs font-semibold text-blue-700 hover:underline cursor-pointer">${progCnt}건 모두 보기 →</button>
+          </div>
+          <div class="divide-y divide-slate-100">
+            ${filtered.filter(c => c.stage !== 'done').slice(0, 3).map(c => `
+              <div class="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <div class="flex items-center gap-2">
+                    <span class="font-mono text-xs font-semibold text-blue-700">${escapeHtml(c.id)}</span>
+                    ${c.overdue ? `<span class="px-1.5 py-0.5 text-[10px] font-bold rounded bg-rose-100 text-rose-700">예정일 경과</span>` : ''}
+                    <span class="text-xs text-slate-500">${escapeHtml(c.partnerOrg)}</span>
+                  </div>
+                  <div class="text-sm font-semibold text-slate-900 mt-0.5">${escapeHtml(c.title)}</div>
+                  <div class="text-xs text-slate-400">${escapeHtml(c.address)}</div>
+                </div>
+                <button type="button" onclick="openAdminCaseEditModal('${c.id}')" class="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-100 self-start sm:self-center cursor-pointer">
+                  현장 보고 수정
+                </button>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+
+        <!-- 차트 2종 -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div class="bg-white rounded-2xl border border-slate-200 p-5">
+            <h3 class="text-sm font-bold text-slate-900 mb-3">주별 접수·종료</h3>
+            <div class="relative h-72">
+              <canvas id="weeklyChart"></canvas>
+            </div>
+          </div>
+          <div class="bg-white rounded-2xl border border-slate-200 p-5">
+            <h3 class="text-sm font-bold text-slate-900 mb-3">시설물별 접수 (상위 5개)</h3>
+            <div class="relative h-72">
+              <canvas id="facilityChart"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- 접이식 분석 섹션 -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-4">
+          <button type="button" onclick="state.homeFilter.showExtraAnalysis=!state.homeFilter.showExtraAnalysis; render();" class="w-full flex items-center justify-between text-sm font-semibold text-slate-800 cursor-pointer">
+            <span>${state.homeFilter.showExtraAnalysis ? '▼' : '▶'} 단계·일정·업체 분석 보기</span>
+            <span class="text-xs text-slate-400">클릭하여 펼치기</span>
+          </button>
+          ${state.homeFilter.showExtraAnalysis ? `
+            <div class="mt-4 pt-4 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+              <div class="p-3 rounded-xl bg-slate-50"><div class="text-slate-500">평균 복구 소요일</div><div class="text-base font-bold text-slate-900 mt-1">18.4일</div></div>
+              <div class="p-3 rounded-xl bg-slate-50"><div class="text-slate-500">한빛복구 배정 건수</div><div class="text-base font-bold text-slate-900 mt-1">${state.cases.filter(c=>c.partnerOrg==='한빛복구').length}건</div></div>
+              <div class="p-3 rounded-xl bg-slate-50"><div class="text-slate-500">태성인프라 배정 건수</div><div class="text-base font-bold text-slate-900 mt-1">${state.cases.filter(c=>c.partnerOrg==='태성인프라').length}건</div></div>
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }
+
+    function renderDaehungCases() {
+      const f = state.casesFilter;
+      const list = state.cases.filter(c => {
+        if (f.kind !== '전체' && c.kind !== f.kind) return false;
+        if (f.stage !== '전체' && c.stage !== f.stage) return false;
+        if (f.facility !== '전체' && c.facility !== f.facility) return false;
+        if (f.q) {
+          const q = f.q.toLowerCase();
+          if (!`${c.id} ${c.title} ${c.address} ${c.plate} ${c.partnerOrg}`.toLowerCase().includes(q)) return false;
+        }
+        return true;
+      });
+
+      return `
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 class="text-xl font-bold text-slate-900">피해현장·업체 배정</h2>
+            <p class="text-sm text-slate-500 mt-0.5">전체 13단계 복구 공정과 복구업체 배정 상태를 관리합니다.</p>
+          </div>
+          <button type="button" onclick="openNewRequestModal()" class="px-4 py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-sm font-semibold flex items-center gap-1.5 self-start cursor-pointer">
+            <i data-lucide="plus" class="w-4 h-4"></i>
+            <span>피해현장 추가</span>
+          </button>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 space-y-3">
+          <div class="flex flex-wrap items-center gap-2">
+            <button type="button" onclick="state.casesFilter.stage='전체'; render();" class="px-3 py-1.5 rounded-full text-xs font-semibold cursor-pointer ${f.stage==='전체'?'bg-blue-700 text-white':'bg-slate-100 text-slate-700'}">전체 ${state.cases.length}</button>
+            ${STAGE_LABELS.map(st => {
+              const cnt = state.cases.filter(c => c.stage === st.key).length;
+              return `<button type="button" onclick="state.casesFilter.stage='${st.key}'; render();" class="px-3 py-1.5 rounded-full text-xs font-semibold cursor-pointer ${f.stage===st.key?'bg-blue-700 text-white':'bg-slate-100 text-slate-700'}">${st.name} ${cnt}</button>`;
+            }).join('')}
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <div class="relative flex-1 min-w-[200px]">
+              <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
+              <input type="text" value="${escapeHtml(f.q)}" oninput="setCaseQuery(this.value)" placeholder="접수번호·현장명·주소·차량번호 검색"
+                class="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600" />
+            </div>
+            <button type="button" onclick="state.casesFilter.showDetailFilter=!state.casesFilter.showDetailFilter; render();" class="px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer">
+              ${f.showDetailFilter ? '필터 접기' : '상세 필터'}
+            </button>
+          </div>
+          ${f.showDetailFilter ? `
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2 border-t border-slate-100">
+              <select onchange="state.casesFilter.kind=this.value; render();" class="px-3 py-2 rounded-xl border border-slate-200 text-xs bg-white">
+                <option value="전체" ${f.kind==='전체'?'selected':''}>전체 구분 (1종/3종)</option>
+                <option value="3종" ${f.kind==='3종'?'selected':''}>3종</option>
+                <option value="1종" ${f.kind==='1종'?'selected':''}>1종</option>
+              </select>
+              <select onchange="state.casesFilter.facility=this.value; render();" class="px-3 py-2 rounded-xl border border-slate-200 text-xs bg-white">
+                <option value="전체">전체 시설물</option>
+                ${['가드레일','신호등·지주','방음벽','가로등','도로표지판','중앙분리대'].map(fac => `<option value="${fac}" ${f.facility===fac?'selected':''}>${fac}</option>`).join('')}
+              </select>
+              <select class="px-3 py-2 rounded-xl border border-slate-200 text-xs bg-white">
+                <option>전체 업무</option><option>업체 배정</option><option>현장 보고</option><option>청구·정산</option>
+              </select>
+            </div>
+          ` : ''}
+        </div>
+
+        <div class="bg-white rounded-2xl border border-slate-200 overflow-x-auto">
+          <table class="w-full text-left text-sm min-w-[780px]">
+            <thead class="bg-slate-50 border-b border-slate-200 text-xs text-slate-500">
+              <tr>
+                <th class="px-4 py-3 font-semibold">피해현장</th>
+                <th class="px-4 py-3 font-semibold">복구업체</th>
+                <th class="px-4 py-3 font-semibold">현재 단계 (13단계)</th>
+                <th class="px-4 py-3 font-semibold">복구 예정</th>
+                <th class="px-4 py-3 font-semibold text-right">다음 행동</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              ${list.map(c => `
+                <tr class="hover:bg-slate-50/70">
+                  <td class="px-4 py-3.5">
+                    <div class="flex items-center gap-1.5">
+                      <span class="font-mono text-xs font-semibold text-blue-700">${escapeHtml(c.id)}</span>
+                      <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">${escapeHtml(c.kind)}</span>
+                    </div>
+                    <div class="font-semibold text-slate-900 mt-0.5">${escapeHtml(c.title)}</div>
+                    <div class="text-xs text-slate-400">${escapeHtml(c.address)} · ${escapeHtml(c.plate)} · ${escapeHtml(c.facility)}</div>
+                  </td>
+                  <td class="px-4 py-3.5 text-xs font-semibold text-slate-800">${escapeHtml(c.partnerOrg)}</td>
+                  <td class="px-4 py-3.5">
+                    <div class="flex items-center gap-1">
+                      ${Array.from({ length: 13 }, (_, i) => `<span class="w-2 h-2 rounded-full ${i < c.step13 ? 'bg-blue-600' : 'bg-slate-200'}"></span>`).join('')}
+                    </div>
+                    <div class="text-[11px] text-slate-500 mt-1">${c.step13} / 13단계</div>
+                  </td>
+                  <td class="px-4 py-3.5 text-xs">
+                    <div>${escapeHtml(c.dueDate)}</div>
+                    ${c.overdue && c.stage !== 'done' ? `<span class="inline-block mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-700">예정일 지남</span>` : ''}
+                  </td>
+                  <td class="px-4 py-3.5 text-right">
+                    <button type="button" onclick="openAdminCaseEditModal('${c.id}')" class="px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-semibold cursor-pointer">
+                      현장 보고 수정 →
+                    </button>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    function renderDaehungClaims() {
+      const f = state.claimsFilter;
+      const list = state.cases.filter(c => {
+        if (f.kind !== '전체' && c.kind !== f.kind) return false;
+        if (f.tab === 'need_write' && c.claimStage !== 'need_write') return false;
+        if (f.tab === 'wait_read' && c.claimStage !== 'wait_read') return false;
+        if (f.tab === 'read_done' && c.claimStage !== 'read_done') return false;
+        return c.partnerClaimAmt > 0;
+      });
+      const cWrite = state.cases.filter(c => c.claimStage === 'need_write').length;
+      const cWait = state.cases.filter(c => c.claimStage === 'wait_read').length;
+      const cDone = state.cases.filter(c => c.claimStage === 'read_done').length;
+      const cAll = state.cases.filter(c => c.partnerClaimAmt > 0).length;
+
+      return `
+        <div>
+          <h2 class="text-xl font-bold text-slate-900">보험사 청구</h2>
+          <p class="text-sm text-slate-500 mt-0.5">복구업체 청구 내역을 검토하여 보험사 청구서를 작성·공개합니다.</p>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 flex flex-wrap gap-2">
+          ${[
+            ['need_write', `작성할 청구 ${cWrite}`],
+            ['wait_read', `공개·열람 대기 ${cWait}`],
+            ['read_done', `열람 완료 ${cDone}`],
+            ['all', `전체 ${cAll}`]
+          ].map(([k, lbl]) => `
+            <button type="button" onclick="state.claimsFilter.tab='${k}'; render();"
+              class="px-3 py-1.5 rounded-full text-xs font-semibold cursor-pointer ${f.tab === k ? 'bg-blue-700 text-white' : 'bg-slate-100 text-slate-700'}">${lbl}</button>
+          `).join('')}
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 overflow-x-auto">
+          <table class="w-full text-left text-sm min-w-[740px]">
+            <thead class="bg-slate-50 border-b border-slate-200 text-xs text-slate-500">
+              <tr>
+                <th class="px-4 py-3 font-semibold">피해현장</th>
+                <th class="px-4 py-3 font-semibold">업체 청구액</th>
+                <th class="px-4 py-3 font-semibold">보험사 청구액</th>
+                <th class="px-4 py-3 font-semibold">진행 (업체 청구 → 작성·공개 → 기관 열람 → 수령)</th>
+                <th class="px-4 py-3 font-semibold text-right">다음 행동</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              ${list.map(c => {
+                const stp = c.receivedAmt > 0 ? 4 : c.claimStage === 'read_done' ? 3 : c.claimStage === 'wait_read' ? 2 : 1;
+                return `
+                  <tr class="hover:bg-slate-50/70">
+                    <td class="px-4 py-3.5"><span class="font-mono text-xs text-blue-700 font-semibold">${escapeHtml(c.id)}</span><div class="font-semibold text-slate-900">${escapeHtml(c.title)}</div></td>
+                    <td class="px-4 py-3.5 text-slate-700">${won(c.partnerClaimAmt)}</td>
+                    <td class="px-4 py-3.5 font-bold text-slate-900">${won(c.insurerClaimAmt)}</td>
+                    <td class="px-4 py-3.5 text-xs">
+                      <div class="flex items-center gap-1">
+                        ${['업체 청구','작성·공개','기관 열람','수령'].map((s,i)=>`<span class="px-2 py-0.5 rounded-full ${stp>=i+1?'bg-blue-50 text-blue-700 font-semibold':'bg-slate-100 text-slate-400'}">${s}</span>`).join('')}
+                      </div>
+                    </td>
+                    <td class="px-4 py-3.5 text-right">
+                      <button type="button" onclick="openAdminClaimWriteModal('${c.id}')" class="px-3 py-1.5 rounded-lg bg-blue-700 text-white hover:bg-blue-800 text-xs font-semibold cursor-pointer">
+                        ${c.claimStage === 'need_write' ? '청구서 작성' : '청구서 수정'}
+                      </button>
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    function renderDaehungReceipts() {
+      const f = state.receiptsFilter;
+      const all = state.cases.filter(c => c.insurerClaimAmt > 0);
+      const list = all.filter(c => {
+        if (f.tab === 'need_confirm') return c.confirmedAmt === 0;
+        if (f.tab === 'need_recv') return c.confirmedAmt > 0 && c.receivedAmt === 0;
+        if (f.tab === 'done') return c.receivedAmt > 0;
+        return true;
+      });
+      const selected = state.cases.find(c => c.id === f.selectedId) || list[0] || all[0];
+
+      return `
+        <div>
+          <h2 class="text-xl font-bold text-slate-900">보험금 수령</h2>
+          <p class="text-sm text-slate-500 mt-0.5">보험사 확정 금액과 실제 입금(수령) 내역을 기록합니다.</p>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <div class="text-sm font-bold text-slate-900">입금내역 엑셀 자동 반영</div>
+            <div class="text-xs text-slate-500">은행 입금내역 엑셀을 업로드하면 해당 건의 수령액이 자동으로 매칭됩니다.</div>
+          </div>
+          <div class="flex gap-2">
+            <button type="button" onclick="showToast('입금내역 표준 양식(receipt_template.xlsx) 내려받기를 시작했습니다.', 'info')" class="px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer">입금내역 양식 내려받기</button>
+            <button type="button" onclick="showToast('입금내역 엑셀 반영 시뮬레이션이 완료되었습니다.')" class="px-3 py-2 rounded-xl bg-slate-900 text-white text-xs font-semibold hover:bg-slate-800 cursor-pointer">입금내역 엑셀 올리기</button>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap gap-2">
+          ${[
+            ['need_confirm', `확정 기록 필요 ${all.filter(c=>c.confirmedAmt===0).length}`],
+            ['need_recv', `입금 확인 필요 ${all.filter(c=>c.confirmedAmt>0 && c.receivedAmt===0).length}`],
+            ['done', `기록 완료 ${all.filter(c=>c.receivedAmt>0).length}`],
+            ['all', `전체 ${all.length}`]
+          ].map(([k, lbl]) => `
+            <button type="button" onclick="state.receiptsFilter.tab='${k}'; render();"
+              class="px-3 py-1.5 rounded-full text-xs font-semibold cursor-pointer ${f.tab===k?'bg-blue-700 text-white':'bg-white border border-slate-200 text-slate-700'}">${lbl}</button>
+          `).join('')}
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div class="lg:col-span-2 bg-white rounded-2xl border border-slate-200 overflow-x-auto">
+            <table class="w-full text-left text-sm">
+              <thead class="bg-slate-50 border-b border-slate-200 text-xs text-slate-500">
+                <tr>
+                  <th class="px-4 py-3 font-semibold">피해현장</th>
+                  <th class="px-4 py-3 font-semibold">보험사 확정</th>
+                  <th class="px-4 py-3 font-semibold">보험금 수령</th>
+                  <th class="px-4 py-3 font-semibold text-right">선택</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                ${list.map(c => `
+                  <tr class="${selected?.id === c.id ? 'bg-blue-50/60' : 'hover:bg-slate-50'}">
+                    <td class="px-4 py-3"><span class="font-mono text-xs text-blue-700 font-semibold">${escapeHtml(c.id)}</span><div class="font-semibold text-slate-900 text-xs mt-0.5">${escapeHtml(c.title)}</div></td>
+                    <td class="px-4 py-3 text-xs font-semibold">${c.confirmedAmt ? won(c.confirmedAmt) : '<span class="text-slate-400">미확정</span>'}</td>
+                    <td class="px-4 py-3 text-xs font-semibold">${c.receivedAmt ? won(c.receivedAmt) : '<span class="text-slate-400">미수령</span>'}</td>
+                    <td class="px-4 py-3 text-right">
+                      <button type="button" onclick="state.receiptsFilter.selectedId='${c.id}'; render();" class="px-2.5 py-1 rounded-lg bg-blue-100 text-blue-700 text-xs font-semibold cursor-pointer">기록</button>
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+
+          <div class="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
+            <h3 class="text-sm font-bold text-slate-900">확정·수령 등록</h3>
+            ${selected ? `
+              <div class="p-3 rounded-xl bg-slate-50 text-xs space-y-1">
+                <div class="font-mono font-bold text-blue-700">${escapeHtml(selected.id)}</div>
+                <div class="font-semibold text-slate-900">${escapeHtml(selected.title)}</div>
+                <div class="text-slate-500">청구액: ${won(selected.insurerClaimAmt)}</div>
+              </div>
+              <div class="space-y-3">
+                <div>
+                  <label class="block text-xs font-semibold text-slate-700 mb-1">보험사 확정액 (원)</label>
+                  <input id="rec-confirm" type="number" value="${selected.confirmedAmt || selected.insurerClaimAmt}" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" />
+                </div>
+                <div>
+                  <label class="block text-xs font-semibold text-slate-700 mb-1">보험금 수령액 (원)</label>
+                  <input id="rec-recv" type="number" value="${selected.receivedAmt || selected.insurerClaimAmt}" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" />
+                </div>
+                <button type="button" onclick="saveReceiptRecord('${selected.id}')" class="w-full py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-sm font-semibold cursor-pointer">
+                  확정·수령 저장
+                </button>
+              </div>
+            ` : '<div class="text-xs text-slate-400">좌측 목록에서 건을 선택하세요.</div>'}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderDaehungSettlements() {
+      const f = state.settlementsFilter;
+      const list = state.cases.filter(c => {
+        if (c.insurerClaimAmt === 0) return false;
+        if (f.company !== '전체' && c.partnerOrg !== f.company) return false;
+        if (f.payStatus !== '전체' && c.paidStatus !== f.payStatus) return false;
+        return true;
+      });
+      const sumClaim = list.reduce((a, c) => a + c.insurerClaimAmt, 0);
+      const sumRecv = list.reduce((a, c) => a + c.receivedAmt, 0);
+      const sumFee = list.reduce((a, c) => a + Math.round((c.receivedAmt || c.insurerClaimAmt) * c.feeRate), 0);
+      const sumPay = list.reduce((a, c) => a + Math.round((c.receivedAmt || c.insurerClaimAmt) * (1 - c.feeRate)), 0);
+
+      return `
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 class="text-xl font-bold text-slate-900">업체 청구·정산</h2>
+            <p class="text-sm text-slate-500 mt-0.5">대흥이엔씨 수수료를 반영한 시공파트너사 지급 정산 내역입니다.</p>
+          </div>
+          <button type="button" onclick="openFeeSettingModal()" class="px-4 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 self-start cursor-pointer">
+            수수료 설정
+          </button>
+        </div>
+
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4"><div class="text-xs text-slate-500">보험사 청구 · ${list.length}건</div><div class="text-lg font-bold mt-1">${won(sumClaim)}</div></div>
+          <div class="bg-white rounded-2xl border border-slate-200 p-4"><div class="text-xs text-slate-500">보험금 수령</div><div class="text-lg font-bold text-emerald-700 mt-1">${won(sumRecv)}</div></div>
+          <div class="bg-white rounded-2xl border border-slate-200 p-4"><div class="text-xs text-slate-500">대흥이엔씨 수수료</div><div class="text-lg font-bold text-blue-700 mt-1">${won(sumFee)}</div></div>
+          <div class="bg-white rounded-2xl border border-slate-200 p-4"><div class="text-xs text-slate-500">업체 지급액</div><div class="text-lg font-bold text-slate-900 mt-1">${won(sumPay)}</div></div>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 flex flex-wrap gap-3 items-center">
+          <select onchange="state.settlementsFilter.company=this.value; render();" class="px-3 py-2 rounded-xl border border-slate-200 text-xs bg-white">
+            <option value="전체" ${f.company==='전체'?'selected':''}>전체 복구업체</option>
+            <option value="한빛복구" ${f.company==='한빛복구'?'selected':''}>한빛복구</option>
+            <option value="태성인프라" ${f.company==='태성인프라'?'selected':''}>태성인프라</option>
+          </select>
+          <select onchange="state.settlementsFilter.payStatus=this.value; render();" class="px-3 py-2 rounded-xl border border-slate-200 text-xs bg-white">
+            <option value="전체" ${f.payStatus==='전체'?'selected':''}>전체 지급 상태</option>
+            <option value="지급 대기" ${f.payStatus==='지급 대기'?'selected':''}>지급 대기</option>
+            <option value="지급 완료" ${f.payStatus==='지급 완료'?'selected':''}>지급 완료</option>
+          </select>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-slate-200 overflow-x-auto">
+          <table class="w-full text-left text-sm min-w-[780px]">
+            <thead class="bg-slate-50 border-b border-slate-200 text-xs text-slate-500">
+              <tr>
+                <th class="px-4 py-3 font-semibold">피해현장</th>
+                <th class="px-4 py-3 font-semibold">보험사 청구</th>
+                <th class="px-4 py-3 font-semibold">보험금 수령</th>
+                <th class="px-4 py-3 font-semibold">수수료</th>
+                <th class="px-4 py-3 font-semibold">업체 지급액</th>
+                <th class="px-4 py-3 font-semibold text-right">지급</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              ${list.map(c => {
+                const base = c.receivedAmt || c.insurerClaimAmt;
+                const fee = Math.round(base * c.feeRate);
+                const pay = base - fee;
+                return `
+                  <tr class="hover:bg-slate-50/70">
+                    <td class="px-4 py-3.5"><span class="font-mono text-xs text-blue-700 font-semibold">${escapeHtml(c.id)}</span> · <span class="text-xs text-slate-500">${escapeHtml(c.partnerOrg)}</span><div class="font-semibold text-slate-900">${escapeHtml(c.title)}</div></td>
+                    <td class="px-4 py-3.5 text-xs">${won(c.insurerClaimAmt)}</td>
+                    <td class="px-4 py-3.5 text-xs font-semibold text-emerald-700">${won(c.receivedAmt)}</td>
+                    <td class="px-4 py-3.5 text-xs text-blue-700">${won(fee)} (${Math.round(c.feeRate*100)}%)</td>
+                    <td class="px-4 py-3.5 text-xs font-bold">${won(pay)}</td>
+                    <td class="px-4 py-3.5 text-right">
+                      ${c.paidStatus === '지급 완료'
+                        ? `<span class="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-semibold">지급 완료</span>`
+                        : `<button type="button" onclick="markPartnerPaid('${c.id}', ${pay})" class="px-3 py-1.5 rounded-lg bg-blue-700 text-white hover:bg-blue-800 text-xs font-semibold cursor-pointer">지급 기록</button>`}
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    function renderDaehungReconcile() {
+      return `
+        <div>
+          <h2 class="text-xl font-bold text-slate-900">입출금 대조</h2>
+          <p class="text-sm text-slate-500 mt-0.5">이카운트 입출금 엑셀을 업로드해 현장별 수령·지급 내역과 대조합니다.</p>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h3 class="text-base font-bold text-slate-900">입출금 내역 올리기</h3>
+            <p class="text-xs text-slate-500 mt-1">이카운트 입출금 엑셀(.xlsx, .csv)을 골라 주세요.</p>
+          </div>
+          <label class="px-4 py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-semibold cursor-pointer inline-flex items-center gap-2 self-start">
+            <i data-lucide="upload" class="w-4 h-4"></i>
+            <span>파일 선택</span>
+            <input type="file" class="hidden" onchange="handleReconcileUpload(this)" />
+          </label>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 overflow-x-auto">
+          <div class="px-5 py-3.5 border-b border-slate-100 text-sm font-bold text-slate-900">연결 기록</div>
+          <table class="w-full text-left text-sm">
+            <thead class="bg-slate-50 border-b border-slate-200 text-xs text-slate-500">
+              <tr><th class="px-4 py-3">일자</th><th class="px-4 py-3">계좌</th><th class="px-4 py-3">적요</th><th class="px-4 py-3">금액</th><th class="px-4 py-3">연결 현장</th><th class="px-4 py-3">상태</th></tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100 text-xs">
+              ${state.reconcileLogs.map(r => `
+                <tr>
+                  <td class="px-4 py-3">${escapeHtml(r.date)}</td>
+                  <td class="px-4 py-3">${escapeHtml(r.bank)}</td>
+                  <td class="px-4 py-3 font-medium text-slate-900">${escapeHtml(r.desc)}</td>
+                  <td class="px-4 py-3 font-bold">${won(r.amount)}</td>
+                  <td class="px-4 py-3 font-mono text-blue-700">${escapeHtml(r.matchedCase)}</td>
+                  <td class="px-4 py-3"><span class="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-semibold">${escapeHtml(r.status)}</span></td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    function renderDaehungRates() {
+      return `
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 class="text-xl font-bold text-slate-900">보험사 요율</h2>
+            <p class="text-sm text-slate-500 mt-0.5">보험사·공제조합별 관리비·이윤, 수수료 및 현장 조사비를 관리합니다.</p>
+          </div>
+          <button type="button" onclick="openAddInsurerRateModal()" class="px-4 py-2 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-semibold self-start cursor-pointer">+ 보험사 추가</button>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 overflow-x-auto">
+          <table class="w-full text-left text-sm min-w-[640px]">
+            <thead class="bg-slate-50 border-b border-slate-200 text-xs text-slate-500">
+              <tr><th class="px-4 py-3">보험사</th><th class="px-4 py-3">관리비·이윤 / 단수</th><th class="px-4 py-3">대흥이엔씨 수수료</th><th class="px-4 py-3">현장 조사비</th><th class="px-4 py-3 text-right">관리</th></tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              ${state.insurerRates.map(r => `
+                <tr>
+                  <td class="px-4 py-3.5 font-bold text-slate-900">${escapeHtml(r.name)}</td>
+                  <td class="px-4 py-3.5 text-xs text-slate-600">${escapeHtml(r.overhead)}</td>
+                  <td class="px-4 py-3.5 font-semibold text-blue-700">${escapeHtml(r.fee)}</td>
+                  <td class="px-4 py-3.5 text-xs">${escapeHtml(r.surveyFee)}</td>
+                  <td class="px-4 py-3.5 text-right"><button type="button" onclick="showToast('${escapeHtml(r.name)} 요율 수정 창을 준비했습니다.', 'info')" class="px-3 py-1 rounded-lg border border-slate-200 text-xs font-semibold hover:bg-slate-50 cursor-pointer">수정</button></td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    function renderDaehungPrices() {
+      const f = state.pricesFilter;
+      const list = state.unitPrices.filter(u => {
+        if (f.cat !== '전체' && u.cat !== f.cat) return false;
+        if (f.q && !`${u.item} ${u.spec} ${u.basis}`.toLowerCase().includes(f.q.toLowerCase())) return false;
+        return true;
+      });
+      return `
+        <div>
+          <h2 class="text-xl font-bold text-slate-900">단가표</h2>
+          <p class="text-sm text-slate-500 mt-0.5">비목별 기준 단가와 산출 근거를 관리합니다.</p>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 flex flex-wrap items-center justify-between gap-3">
+          <div class="flex flex-wrap items-center gap-2">
+            ${['전체', '재료비', '노무비', '경비'].map(c => `
+              <button type="button" onclick="state.pricesFilter.cat='${c}'; render();" class="px-3 py-1.5 rounded-full text-xs font-semibold cursor-pointer ${f.cat===c?'bg-blue-700 text-white':'bg-slate-100 text-slate-700'}">${c}</button>
+            `).join('')}
+            <input type="text" value="${escapeHtml(f.q)}" oninput="state.pricesFilter.q=this.value; render();" placeholder="비목·규격 검색" class="px-3 py-1.5 rounded-xl border border-slate-200 text-xs" />
+          </div>
+          <div class="flex gap-2">
+            <button type="button" onclick="showToast('단가표 엑셀 내려받기를 시작했습니다.', 'info')" class="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold cursor-pointer">엑셀 내려받기</button>
+            <button type="button" onclick="showToast('단가표 일괄 반영이 완료되었습니다.')" class="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-xs font-semibold cursor-pointer">엑셀 올리기</button>
+          </div>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 overflow-x-auto">
+          <table class="w-full text-left text-sm min-w-[680px]">
+            <thead class="bg-slate-50 border-b border-slate-200 text-xs text-slate-500">
+              <tr><th class="px-4 py-3">비목·세부</th><th class="px-4 py-3">공정·규격</th><th class="px-4 py-3">단위</th><th class="px-4 py-3">기준 단가</th><th class="px-4 py-3">근거</th></tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100 text-xs">
+              ${list.map(u => `
+                <tr>
+                  <td class="px-4 py-3"><span class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold mr-1.5">${escapeHtml(u.cat)}</span><span class="font-bold text-slate-900">${escapeHtml(u.item)}</span></td>
+                  <td class="px-4 py-3 text-slate-600">${escapeHtml(u.spec)}</td>
+                  <td class="px-4 py-3">${escapeHtml(u.unit)}</td>
+                  <td class="px-4 py-3 font-bold text-blue-700">${won(u.price)}</td>
+                  <td class="px-4 py-3 text-slate-500">${escapeHtml(u.basis)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    function renderDaehungAccounts(scope) {
+      if (scope === 'acc_partner') {
+        return `
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div><h2 class="text-xl font-bold text-slate-900">복구업체 계정</h2><p class="text-sm text-slate-500 mt-0.5">시공파트너사 업체 정보와 하위 계정을 관리합니다.</p></div>
+            <button type="button" onclick="openAddPartnerModal()" class="px-4 py-2 rounded-xl bg-blue-700 text-white text-xs font-semibold self-start cursor-pointer">+ 업체 등록</button>
+          </div>
+          <div class="bg-white rounded-2xl border border-slate-200 overflow-x-auto">
+            <table class="w-full text-left text-sm min-w-[640px]">
+              <thead class="bg-slate-50 border-b border-slate-200 text-xs text-slate-500">
+                <tr><th class="px-4 py-3">업체</th><th class="px-4 py-3">등급</th><th class="px-4 py-3">대표 연락처</th><th class="px-4 py-3">진행 중</th><th class="px-4 py-3">지급 대기</th><th class="px-4 py-3">계정</th></tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100 text-xs">
+                ${state.partnerCompanies.map(p => `
+                  <tr>
+                    <td class="px-4 py-3.5 font-bold text-slate-900">${escapeHtml(p.name)}</td>
+                    <td class="px-4 py-3.5"><span class="px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-semibold">${escapeHtml(p.grade)}</span></td>
+                    <td class="px-4 py-3.5">${escapeHtml(p.phone)}</td>
+                    <td class="px-4 py-3.5">${p.inProgress}건</td>
+                    <td class="px-4 py-3.5">${p.waitingPay}건</td>
+                    <td class="px-4 py-3.5 font-semibold">${escapeHtml(p.accountCount)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        `;
+      }
+      const isOrg = scope === 'acc_org';
+      const rows = isOrg ? state.orgAccounts : state.adminAccounts;
+      return `
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div><h2 class="text-xl font-bold text-slate-900">${isOrg ? '보험사·손해사정 계정' : '관리자 계정'}</h2><p class="text-sm text-slate-500 mt-0.5">계정 발급 및 접근 권한을 관리합니다.</p></div>
+          <button type="button" onclick="openIssueAccountModal('${scope}')" class="px-4 py-2 rounded-xl bg-blue-700 text-white text-xs font-semibold self-start cursor-pointer">+ 계정 발급</button>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 overflow-x-auto">
+          <table class="w-full text-left text-sm min-w-[600px]">
+            <thead class="bg-slate-50 border-b border-slate-200 text-xs text-slate-500">
+              <tr>
+                <th class="px-4 py-3">이름·아이디</th>
+                ${isOrg ? '<th class="px-4 py-3">역할</th><th class="px-4 py-3">소속</th>' : ''}
+                <th class="px-4 py-3">알림</th>
+                <th class="px-4 py-3">접근</th>
+                <th class="px-4 py-3 text-right">관리</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100 text-xs">
+              ${rows.map(a => `
+                <tr>
+                  <td class="px-4 py-3.5"><span class="font-bold text-slate-900">${escapeHtml(a.name)}</span> <span class="font-mono text-slate-400">(${escapeHtml(a.loginId)})</span></td>
+                  ${isOrg ? `<td class="px-4 py-3.5">${escapeHtml(a.role)}</td><td class="px-4 py-3.5 font-semibold">${escapeHtml(a.org)}</td>` : ''}
+                  <td class="px-4 py-3.5 text-slate-600">${escapeHtml(a.noti)}</td>
+                  <td class="px-4 py-3.5"><span class="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-semibold">${escapeHtml(a.status)}</span></td>
+                  <td class="px-4 py-3.5 text-right"><button type="button" onclick="showToast('${escapeHtml(a.name)}님의 임시 비밀번호를 재발급했습니다.')" class="px-2.5 py-1 rounded-lg border border-slate-200 hover:bg-slate-50 font-semibold cursor-pointer">비밀번호 재발급</button></td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    // =========================================================================
+    // 8. 역할 3: 시공파트너사 화면들
+    // =========================================================================
+    function renderPartnerCases() {
+      const f = state.casesFilter;
+      const partnerList = state.cases.filter(c => c.partnerOrg === '한빛복구');
+      const filtered = partnerList.filter(c => {
+        if (f.tab === 'todo' && !c.partnerStatus.includes('내 차례')) return false;
+        if (f.tab === 'progress' && c.partnerStatus !== '대흥이엔씨 처리 중') return false;
+        if (f.tab === 'done' && c.partnerStatus !== '완료') return false;
+        if (f.q && !`${c.id} ${c.title} ${c.address}`.toLowerCase().includes(f.q.toLowerCase())) return false;
+        return true;
+      });
+      const cTodo = partnerList.filter(c => c.partnerStatus.includes('내 차례')).length;
+      const cProg = partnerList.filter(c => c.partnerStatus === '대흥이엔씨 처리 중').length;
+      const cDone = partnerList.filter(c => c.partnerStatus === '완료').length;
+
+      return `
+        <div>
+          <h2 class="text-xl font-bold text-slate-900">내 피해현장</h2>
+          <p class="text-sm text-slate-500 mt-0.5">배정된 현장의 담당자 지정, 현장 사진 및 견적서 등록을 진행합니다.</p>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 space-y-3">
+          <div class="flex flex-wrap gap-2">
+            ${[
+              ['all', `전체 ${partnerList.length}`],
+              ['todo', `우리 할 일 ${cTodo}`],
+              ['progress', `대흥이엔씨 처리 중 ${cProg}`],
+              ['done', `완료 ${cDone}`]
+            ].map(([k, lbl]) => `
+              <button type="button" onclick="setCaseTab('${k}')" class="px-3 py-1.5 rounded-full text-xs font-semibold cursor-pointer ${f.tab===k?'bg-blue-700 text-white':'bg-slate-100 text-slate-700'}">${lbl}</button>
+            `).join('')}
+          </div>
+          <div class="relative">
+            <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
+            <input type="text" value="${escapeHtml(f.q)}" oninput="setCaseQuery(this.value)" placeholder="접수번호·피해 내용·주소로 찾기" class="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 text-sm" />
+          </div>
+        </div>
+        <div class="space-y-3">
+          ${filtered.map(c => {
+            const pct = Math.round((c.partnerStep6 / 6) * 100);
+            const isMyTurn = c.partnerStatus.includes('내 차례');
+            const actionLabel = c.partnerStep6 === 1 ? '담당자 지정' : c.partnerStep6 === 2 ? '사진·최초견적 올리기' : '진행 상세 보기';
+            return `
+              <div class="bg-white rounded-2xl border border-slate-200 p-5 space-y-3">
+                <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <div class="flex items-center gap-2">
+                    <span class="font-mono font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded">${escapeHtml(c.id)}</span>
+                    <span class="text-slate-500">현장 담당자: <strong>${escapeHtml(c.partnerManager)}</strong></span>
+                  </div>
+                  <span class="px-2.5 py-0.5 rounded-full font-semibold ${isMyTurn ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-slate-100 text-slate-600'}">${escapeHtml(c.partnerStatus)}</span>
+                </div>
+                <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                  <div>
+                    <h3 class="text-base font-bold text-slate-900">${escapeHtml(c.title)}</h3>
+                    <p class="text-xs text-slate-500 mt-0.5">${escapeHtml(c.address)} · 복구 예정 ${escapeHtml(c.dueDate)}</p>
+                  </div>
+                  <button type="button" onclick="openPartnerActionModal('${c.id}')" class="px-4 py-2 rounded-xl text-xs font-semibold shrink-0 cursor-pointer ${isMyTurn ? 'bg-blue-700 text-white hover:bg-blue-800' : 'bg-slate-100 text-slate-700'}">
+                    ${actionLabel}
+                  </button>
+                </div>
+                <div class="space-y-1">
+                  <div class="flex justify-between text-[11px] text-slate-500"><span>내 할 일 ${c.partnerStep6} / 6</span><span>${pct}%</span></div>
+                  <div class="w-full h-2 rounded-full bg-slate-100 overflow-hidden"><div class="h-full bg-blue-600 rounded-full" style="width:${pct}%"></div></div>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+    }
+
+    function renderPartnerAccounts() {
+      return `
+        <div>
+          <h2 class="text-xl font-bold text-slate-900">계정 관리</h2>
+          <p class="text-sm text-slate-500 mt-0.5">한빛복구 · 대표 계정 1개와 부계정 최대 2개로 운영합니다. 3자리 중 3자리 사용 중입니다.</p>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 overflow-x-auto">
+          <div class="px-5 py-3.5 border-b border-slate-100 text-sm font-bold text-slate-900">계정 목록 · ${state.partnerSubAccounts.length} / 3</div>
+          <table class="w-full text-left text-sm min-w-[620px]">
+            <thead class="bg-slate-50 border-b border-slate-200 text-xs text-slate-500">
+              <tr><th class="px-4 py-3">이름·구분</th><th class="px-4 py-3">이메일 (로그인 아이디)</th><th class="px-4 py-3">연락처</th><th class="px-4 py-3">접근</th><th class="px-4 py-3 text-right">관리</th></tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100 text-xs">
+              ${state.partnerSubAccounts.map(a => `
+                <tr>
+                  <td class="px-4 py-3.5 font-bold text-slate-900">${escapeHtml(a.name)}</td>
+                  <td class="px-4 py-3.5 font-mono text-slate-600">${escapeHtml(a.email)}</td>
+                  <td class="px-4 py-3.5">${escapeHtml(a.phone)}</td>
+                  <td class="px-4 py-3.5"><span class="px-2 py-0.5 rounded-full font-semibold ${a.status==='활성'?'bg-emerald-50 text-emerald-700':'bg-slate-100 text-slate-500'}">${escapeHtml(a.status)}</span></td>
+                  <td class="px-4 py-3.5 text-right space-x-1.5">
+                    <button type="button" onclick="showToast('${escapeHtml(a.name)} 비밀번호를 재발급했습니다.')" class="px-2.5 py-1 rounded-lg border border-slate-200 hover:bg-slate-50 font-semibold cursor-pointer">비밀번호 재발급</button>
+                    <button type="button" onclick="togglePartnerSubStatus('${a.id}')" class="px-2.5 py-1 rounded-lg border border-slate-200 hover:bg-slate-50 font-semibold cursor-pointer">${a.status==='활성'?'접근 중지':'사용 재개'}</button>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    // =========================================================================
+    // 9. 공통 화면: 내 정보·알림 설정 & 공지사항
+    // =========================================================================
+    function renderSettings() {
+      const u = state.user;
+      return `
+        <div><h2 class="text-xl font-bold text-slate-900">내 정보·알림 설정</h2><p class="text-sm text-slate-500 mt-0.5">프로필 정보와 업무 진행 알림 수신 채널을 설정합니다.</p></div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-5 flex items-center gap-4">
+          <div class="w-12 h-12 rounded-full bg-blue-100 text-blue-700 font-bold flex items-center justify-center text-lg">${escapeHtml(u.name[0])}</div>
+          <div>
+            <div class="text-base font-bold text-slate-900">${escapeHtml(u.name)}</div>
+            <div class="text-xs text-slate-500 mt-0.5">${escapeHtml(u.org)} · ${escapeHtml(u.roleLabel)}</div>
+          </div>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
+          <h3 class="text-sm font-bold text-slate-900">알림 수신 설정</h3>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+            <label class="p-3 rounded-xl border border-slate-200 flex items-center gap-2 cursor-pointer">
+              <input id="set-sms" type="checkbox" ${u.sms ? 'checked' : ''} class="rounded text-blue-600" />
+              <span class="font-semibold">SMS 문자 알림</span>
+            </label>
+            <label class="p-3 rounded-xl border border-slate-200 bg-slate-50 flex items-center gap-2 text-slate-400">
+              <input type="checkbox" disabled />
+              <span>알림톡 (추후 오픈 예정)</span>
+            </label>
+            <label class="p-3 rounded-xl border border-slate-200 flex items-center gap-2 cursor-pointer">
+              <input id="set-email" type="checkbox" ${u.emailNoti ? 'checked' : ''} class="rounded text-blue-600" />
+              <span class="font-semibold">이메일 알림</span>
+            </label>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">휴대폰 번호</label>
+              <input id="set-phone" type="text" value="${escapeHtml(u.phone)}" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">이메일 주소</label>
+              <div class="flex gap-2">
+                <input id="set-email-addr" type="email" value="${escapeHtml(u.email)}" class="flex-1 px-3 py-2 rounded-xl border border-slate-200 text-sm" />
+                <button type="button" onclick="showToast('테스트 메일을 발송했습니다.', 'info')" class="px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold hover:bg-slate-50 shrink-0 cursor-pointer">테스트 메일 보내기</button>
+              </div>
+            </div>
+          </div>
+          <div class="flex justify-end gap-2 pt-2 border-t border-slate-100">
+            <button type="button" onclick="render()" class="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 cursor-pointer">취소</button>
+            <button type="button" onclick="saveSettings()" class="px-4 py-2 rounded-xl bg-blue-700 text-white text-xs font-semibold hover:bg-blue-800 cursor-pointer">알림 설정 저장</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderNotices() {
+      const unreadCnt = state.notices.filter(n => !n.read).length;
+      const list = state.noticesTab === 'unread' ? state.notices.filter(n => !n.read) : state.notices;
+      return `
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div><h2 class="text-xl font-bold text-slate-900">공지사항</h2><p class="text-sm text-slate-500 mt-0.5">시스템 운영 안내 및 단가 개정 공지를 확인합니다.</p></div>
+          ${state.user.role === 'daehung' ? `<button type="button" onclick="openAddNoticeModal()" class="px-4 py-2 rounded-xl bg-blue-700 text-white text-xs font-semibold self-start cursor-pointer">+ 공지 작성</button>` : ''}
+        </div>
+        <div class="flex gap-2">
+          <button type="button" onclick="state.noticesTab='all'; render();" class="px-3 py-1.5 rounded-full text-xs font-semibold cursor-pointer ${state.noticesTab==='all'?'bg-blue-700 text-white':'bg-white border border-slate-200 text-slate-700'}">전체 ${state.notices.length}</button>
+          <button type="button" onclick="state.noticesTab='unread'; render();" class="px-3 py-1.5 rounded-full text-xs font-semibold cursor-pointer ${state.noticesTab==='unread'?'bg-blue-700 text-white':'bg-white border border-slate-200 text-slate-700'}">미확인 ${unreadCnt}</button>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 divide-y divide-slate-100">
+          ${list.map(n => `
+            <div class="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50">
+              <div class="space-y-1">
+                <div class="flex items-center gap-2">
+                  ${!n.read ? `<span class="w-2 h-2 rounded-full bg-rose-600"></span><span class="px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 text-[10px] font-bold">미확인</span>` : ''}
+                  <span class="text-sm font-bold text-slate-900">${escapeHtml(n.title)}</span>
+                </div>
+                <p class="text-xs text-slate-500">${escapeHtml(n.summary)} · ${escapeHtml(n.date)}</p>
+              </div>
+              <button type="button" onclick="openNoticeModal(${n.id})" class="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold hover:bg-slate-100 self-start sm:self-center cursor-pointer">공지 보기 →</button>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    // =========================================================================
+    // 10. 모달 및 인터랙션 핸들러
+    // =========================================================================
+    function setCaseTab(t) { state.casesFilter.tab = t; render(); }
+    function setCaseQuery(q) { state.casesFilter.q = q; render(); }
+    function setCaseSort(s) { state.casesFilter.sort = s; render(); }
+    function toggleOver7(v) { state.casesFilter.over7 = v; render(); }
+
+    function openNewRequestModal() {
+      openModal('신규 복구의뢰 접수', `
+        <div class="space-y-3">
+          <div><label class="block text-xs font-semibold mb-1">피해 현장명</label><input id="nr-title" type="text" placeholder="예: 성산대교 남단 가드레일 파손" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" /></div>
+          <div class="grid grid-cols-2 gap-3">
+            <div><label class="block text-xs font-semibold mb-1">구분</label><select id="nr-kind" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white"><option>3종</option><option>1종</option></select></div>
+            <div><label class="block text-xs font-semibold mb-1">시설물</label><select id="nr-fac" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white"><option>가드레일</option><option>방음벽</option><option>신호등·지주</option><option>가로등</option><option>도로표지판</option></select></div>
+          </div>
+          <div><label class="block text-xs font-semibold mb-1">사고 주소</label><input id="nr-addr" type="text" placeholder="예: 서울 마포구 망원동 12-3" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" /></div>
+          <div><label class="block text-xs font-semibold mb-1">가해 차량번호</label><input id="nr-plate" type="text" placeholder="예: 서울71사 1234" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" /></div>
+        </div>
+      `, `
+        <button type="button" onclick="closeModal()" class="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold cursor-pointer">취소</button>
+        <button type="button" onclick="submitNewRequest()" class="px-4 py-2 rounded-xl bg-blue-700 text-white text-xs font-semibold cursor-pointer">접수 등록</button>
+      `);
+    }
+
+    function submitNewRequest() {
+      const title = document.getElementById('nr-title').value.trim();
+      const addr = document.getElementById('nr-addr').value.trim() || '서울시 도로 구간';
+      const plate = document.getElementById('nr-plate').value.trim() || '미상';
+      const kind = document.getElementById('nr-kind').value;
+      const facility = document.getElementById('nr-fac').value;
+      if (!title) { showToast('피해 현장명을 입력해 주세요.', 'error'); return; }
+      const newId = 'DH-2026-' + Math.floor(1110 + Math.random() * 880);
+      state.cases.unshift({
+        id: newId, date: '2026-11-20', elapsedDays: 0, kind, facility, title, address: addr, plate,
+        insurerOrg: state.user.org || '버스공제조합', partnerOrg: '한빛복구', partnerManager: '미지정',
+        stage: '01', step13: 1, partnerStep6: 1, partnerStatus: '담당자 지정 · 내 차례',
+        insurerTask: 'progress', insurerAction: '상세 보기', insurerGuide: '신규 접수가 완료되어 업체 배정 중입니다.',
+        dueDate: '2026-11-30', overdue: false,
+        partnerClaimAmt: 0, insurerClaimAmt: 0, confirmedAmt: 0, receivedAmt: 0, feeRate: 0.12, paidAmt: 0,
+        claimStage: 'none', claimReadStep: 0, paidStatus: '미지급'
+      });
+      closeModal();
+      syncCaseToDb(state.cases[0]);
+      showToast(`${newId} 복구의뢰가 정상 접수되었습니다.`);
+      render();
+    }
+
+    function openInsurerCaseAction(caseId) {
+      const c = state.cases.find(x => x.id === caseId);
+      if (!c) return;
+      openModal(`${c.id} 의뢰 상세`, `
+        <div class="space-y-2 text-xs">
+          <div class="font-bold text-sm text-slate-900">${escapeHtml(c.title)}</div>
+          <div class="text-slate-500">주소: ${escapeHtml(c.address)} · 차량: ${escapeHtml(c.plate)}</div>
+          <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">안내: ${escapeHtml(c.insurerGuide)}</div>
+        </div>
+      `, `
+        <button type="button" onclick="closeModal()" class="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold cursor-pointer">닫기</button>
+        ${c.insurerTask === 'todo' ? `<button type="button" onclick="completeInsurerTodo('${c.id}')" class="px-4 py-2 rounded-xl bg-blue-700 text-white text-xs font-semibold cursor-pointer">확인 완료 처리</button>` : ''}
+      `);
+    }
+
+    function completeInsurerTodo(caseId) {
+      const c = state.cases.find(x => x.id === caseId);
+      if (c) { c.insurerTask = 'progress'; c.insurerAction = '상세 보기'; c.insurerGuide = '확인 완료 후 대흥이엔씨 검토 중입니다.'; }
+      closeModal();
+      syncCaseToDb(c);
+      showToast('할 일 확인이 완료되었습니다.');
+      render();
+    }
+
+    function openClaimDetailModal(caseId) {
+      const c = state.cases.find(x => x.id === caseId);
+      if (!c) return;
+      if (c.claimReadStep < 2) c.claimReadStep = 2;
+      openModal(`${c.id} 보험사 청구서`, `
+        <div class="space-y-3 text-xs">
+          <div class="font-bold text-sm text-slate-900">${escapeHtml(c.title)}</div>
+          <div class="p-3 rounded-xl bg-blue-50 border border-blue-200 flex justify-between items-center">
+            <span class="font-semibold text-blue-900">총 보험사 청구액</span>
+            <span class="text-base font-bold text-blue-700">${won(c.insurerClaimAmt)}</span>
+          </div>
+          <div class="text-slate-600">시공파트너사(${escapeHtml(c.partnerOrg)}) 복구 내역 및 표준품셈 단가 근거가 첨부되었습니다.</div>
+        </div>
+      `, `
+        <button type="button" onclick="closeModal(); render();" class="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold cursor-pointer">닫기</button>
+        ${c.claimReadStep < 3 ? `<button type="button" onclick="confirmClaimRead('${c.id}')" class="px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-semibold cursor-pointer">내용 확인 완료</button>` : ''}
+      `);
+    }
+
+    function confirmClaimRead(caseId) {
+      const c = state.cases.find(x => x.id === caseId);
+      if (c) { c.claimReadStep = 3; c.claimStage = 'read_done'; }
+      closeModal();
+      syncCaseToDb(c);
+      showToast('청구서 내용 확인이 완료되었습니다.');
+      render();
+    }
+
+    function openAdminCaseEditModal(caseId) {
+      const c = state.cases.find(x => x.id === caseId);
+      if (!c) return;
+      openModal(`${c.id} 현장 보고 수정`, `
+        <div class="space-y-3">
+          <div>
+            <label class="block text-xs font-semibold mb-1">배정 복구업체</label>
+            <select id="ed-partner" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white">
+              <option ${c.partnerOrg==='한빛복구'?'selected':''}>한빛복구</option>
+              <option ${c.partnerOrg==='태성인프라'?'selected':''}>태성인프라</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold mb-1">업무 단계</label>
+            <select id="ed-stage" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white">
+              ${STAGE_LABELS.map(s => `<option value="${s.key}" ${c.stage===s.key?'selected':''}>${s.name}</option>`).join('')}
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold mb-1">복구 예정일</label>
+            <input id="ed-due" type="date" value="${escapeHtml(c.dueDate)}" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" />
+          </div>
+        </div>
+      `, `
+        <button type="button" onclick="closeModal()" class="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold cursor-pointer">취소</button>
+        <button type="button" onclick="saveAdminCaseEdit('${c.id}')" class="px-4 py-2 rounded-xl bg-blue-700 text-white text-xs font-semibold cursor-pointer">저장</button>
+      `);
+    }
+
+    function saveAdminCaseEdit(caseId) {
+      const c = state.cases.find(x => x.id === caseId);
+      if (c) {
+        c.partnerOrg = document.getElementById('ed-partner').value;
+        c.stage = document.getElementById('ed-stage').value;
+        c.dueDate = document.getElementById('ed-due').value;
+        if (c.stage === 'done') { c.step13 = 13; c.overdue = false; }
+      }
+      closeModal();
+      syncCaseToDb(c);
+      showToast('현장 정보가 수정되었습니다.');
+      render();
+    }
+
+    function openAdminClaimWriteModal(caseId) {
+      const c = state.cases.find(x => x.id === caseId);
+      if (!c) return;
+      openModal(`${c.id} 보험사 청구서 작성`, `
+        <div class="space-y-3">
+          <div class="text-xs text-slate-500">업체 청구액: <strong>${won(c.partnerClaimAmt)}</strong></div>
+          <div>
+            <label class="block text-xs font-semibold mb-1">보험사 청구액 (원)</label>
+            <input id="cw-amt" type="number" value="${c.insurerClaimAmt || c.partnerClaimAmt}" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" />
+          </div>
+        </div>
+      `, `
+        <button type="button" onclick="closeModal()" class="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold cursor-pointer">취소</button>
+        <button type="button" onclick="saveAdminClaimWrite('${c.id}')" class="px-4 py-2 rounded-xl bg-blue-700 text-white text-xs font-semibold cursor-pointer">청구서 공개</button>
+      `);
+    }
+
+    function saveAdminClaimWrite(caseId) {
+      const c = state.cases.find(x => x.id === caseId);
+      const val = Number(document.getElementById('cw-amt').value) || 0;
+      if (c) { c.insurerClaimAmt = val; c.claimStage = 'wait_read'; c.claimReadStep = 1; }
+      closeModal();
+      syncCaseToDb(c);
+      showToast('보험사 청구서가 작성·공개되었습니다.');
+      render();
+    }
+
+    function saveReceiptRecord(caseId) {
+      const c = state.cases.find(x => x.id === caseId);
+      if (!c) return;
+      c.confirmedAmt = Number(document.getElementById('rec-confirm').value) || 0;
+      c.receivedAmt = Number(document.getElementById('rec-recv').value) || 0;
+      if (c.receivedAmt > 0 && c.stage === '03') { c.stage = '04'; c.step13 = 11; c.paidStatus = '지급 대기'; }
+      syncCaseToDb(c);
+      showToast(`${c.id} 확정·수령 금액이 저장되었습니다.`);
+      render();
+    }
+
+    function markPartnerPaid(caseId, payAmt) {
+      const c = state.cases.find(x => x.id === caseId);
+      if (c) { c.paidAmt = payAmt; c.paidStatus = '지급 완료'; c.stage = 'done'; c.step13 = 13; c.overdue = false; }
+      syncCaseToDb(c);
+      showToast(`${caseId} 업체 지급 기록이 완료되었습니다.`);
+      render();
+    }
+
+    function openFeeSettingModal() {
+      openModal('기본 수수료 설정', `
+        <div><label class="block text-xs font-semibold mb-1">대흥이엔씨 기본 수수료율 (%)</label><input id="fee-pct" type="number" value="12" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" /></div>
+      `, `
+        <button type="button" onclick="closeModal()" class="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold cursor-pointer">취소</button>
+        <button type="button" onclick="closeModal(); showToast('수수료 설정이 저장되었습니다.');" class="px-4 py-2 rounded-xl bg-blue-700 text-white text-xs font-semibold cursor-pointer">저장</button>
+      `);
+    }
+
+    function handleReconcileUpload(input) {
+      if (!input.files || !input.files[0]) return;
+      state.reconcileLogs.unshift({
+        id: 'rc' + Date.now(), date: '2026-11-20', bank: '기업은행 (주거래)',
+        desc: `업로드: ${input.files[0].name}`, amount: 8600000, matchedCase: 'DH-2026-1085', status: '자동 매칭'
+      });
+      showToast('입출금 내역 파일이 대조 목록에 반영되었습니다.');
+      render();
+    }
+
+    function openAddInsurerRateModal() {
+      openModal('보험사 요율 추가', `
+        <div class="space-y-3">
+          <div><label class="block text-xs font-semibold mb-1">보험사명</label><input id="ir-name" type="text" placeholder="예: 현대해상" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" /></div>
+          <div><label class="block text-xs font-semibold mb-1">대흥이엔씨 수수료</label><input id="ir-fee" type="text" value="10%" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" /></div>
+        </div>
+      `, `
+        <button type="button" onclick="closeModal()" class="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold cursor-pointer">취소</button>
+        <button type="button" onclick="const n=document.getElementById('ir-name').value.trim(); if(n){state.insurerRates.push({id:'ir'+Date.now(),name:n,overhead:'일반관리비 6% / 이윤 10%',fee:document.getElementById('ir-fee').value,surveyFee:'150,000원'}); closeModal(); showToast('보험사가 추가되었습니다.'); render();}" class="px-4 py-2 rounded-xl bg-blue-700 text-white text-xs font-semibold cursor-pointer">추가</button>
+      `);
+    }
+
+    function openAddPartnerModal() {
+      openModal('복구업체 등록', `
+        <div class="space-y-3">
+          <div><label class="block text-xs font-semibold mb-1">업체명</label><input id="pc-name" type="text" placeholder="예: 대한도로복구" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" /></div>
+          <div><label class="block text-xs font-semibold mb-1">대표 연락처</label><input id="pc-phone" type="text" placeholder="02-000-0000" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" /></div>
+        </div>
+      `, `
+        <button type="button" onclick="closeModal()" class="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold cursor-pointer">취소</button>
+        <button type="button" onclick="const n=document.getElementById('pc-name').value.trim(); if(n){state.partnerCompanies.push({id:'pc'+Date.now(),name:n,grade:'B등급',phone:document.getElementById('pc-phone').value||'02-000-0000',inProgress:0,waitingPay:0,accountCount:'1 / 3'}); closeModal(); showToast('업체가 등록되었습니다.'); render();}" class="px-4 py-2 rounded-xl bg-blue-700 text-white text-xs font-semibold cursor-pointer">등록</button>
+      `);
+    }
+
+    function openIssueAccountModal(scope) {
+      const isOrg = scope === 'acc_org';
+      openModal('새 계정 발급', `
+        <div class="space-y-3">
+          <div><label class="block text-xs font-semibold mb-1">이름</label><input id="ia-name" type="text" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" /></div>
+          <div><label class="block text-xs font-semibold mb-1">아이디</label><input id="ia-id" type="text" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" /></div>
+          ${isOrg ? `<div><label class="block text-xs font-semibold mb-1">소속 기관</label><input id="ia-org" type="text" value="버스공제조합" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" /></div>` : ''}
+        </div>
+      `, `
+        <button type="button" onclick="closeModal()" class="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold cursor-pointer">취소</button>
+        <button type="button" onclick="submitIssueAccount('${scope}')" class="px-4 py-2 rounded-xl bg-blue-700 text-white text-xs font-semibold cursor-pointer">발급</button>
+      `);
+    }
+
+    function submitIssueAccount(scope) {
+      const name = document.getElementById('ia-name').value.trim();
+      const loginId = document.getElementById('ia-id').value.trim();
+      if (!name || !loginId) { showToast('이름과 아이디를 입력해 주세요.', 'error'); return; }
+      if (scope === 'acc_org') {
+        state.orgAccounts.push({ id: 'oa' + Date.now(), name, loginId, role: '손해사정사', org: document.getElementById('ia-org').value, noti: '이메일', status: '활성' });
+      } else {
+        state.adminAccounts.push({ id: 'adm' + Date.now(), name, loginId, noti: '이메일', status: '활성' });
+      }
+      closeModal();
+      showToast('계정이 발급되었습니다.');
+      render();
+    }
+
+    function openPartnerActionModal(caseId) {
+      const c = state.cases.find(x => x.id === caseId);
+      if (!c) return;
+      if (c.partnerStep6 === 1) {
+        openModal(`${c.id} 담당자 지정`, `
+          <div><label class="block text-xs font-semibold mb-1">현장 담당자 선택</label>
+          <select id="pa-mgr" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm bg-white"><option>박지훈</option><option>김태우</option></select></div>
+        `, `
+          <button type="button" onclick="closeModal()" class="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold cursor-pointer">취소</button>
+          <button type="button" onclick="assignPartnerMgr('${c.id}')" class="px-4 py-2 rounded-xl bg-blue-700 text-white text-xs font-semibold cursor-pointer">지정 완료</button>
+        `);
+      } else {
+        openModal(`${c.id} 사진·최초견적 올리기`, `
+          <div class="space-y-3">
+            <div><label class="block text-xs font-semibold mb-1">최초 견적 금액 (원)</label><input id="pa-est" type="number" value="${c.partnerClaimAmt || 3500000}" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" /></div>
+            <div><label class="block text-xs font-semibold mb-1">현장 특이사항 메모</label><textarea id="pa-memo" rows="3" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" placeholder="현장 파손 범위 및 자재 소요 내역"></textarea></div>
+          </div>
+        `, `
+          <button type="button" onclick="closeModal()" class="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold cursor-pointer">취소</button>
+          <button type="button" onclick="submitPartnerEstimate('${c.id}')" class="px-4 py-2 rounded-xl bg-blue-700 text-white text-xs font-semibold cursor-pointer">제출 완료</button>
+        `);
+      }
+    }
+
+    function assignPartnerMgr(caseId) {
+      const c = state.cases.find(x => x.id === caseId);
+      if (c) { c.partnerManager = document.getElementById('pa-mgr').value; c.partnerStep6 = 2; c.partnerStatus = '최초견적 제출 · 내 차례'; }
+      syncCaseToDb(c);
+      closeModal(); showToast('현장 담당자가 지정되었습니다.'); render();
+    }
+
+    function submitPartnerEstimate(caseId) {
+      const c = state.cases.find(x => x.id === caseId);
+      if (c) { c.partnerClaimAmt = Number(document.getElementById('pa-est').value) || 0; c.partnerStep6 = 3; c.partnerStatus = '대흥이엔씨 처리 중'; c.stage = '02'; }
+      syncCaseToDb(c);
+      closeModal(); showToast('현장 사진 및 최초견적이 제출되었습니다.'); render();
+    }
+
+    function togglePartnerSubStatus(id) {
+      const a = state.partnerSubAccounts.find(x => x.id === id);
+      if (a) a.status = a.status === '활성' ? '중지' : '활성';
+      render();
+    }
+
+    function saveSettings() {
+      state.user.sms = document.getElementById('set-sms').checked;
+      state.user.emailNoti = document.getElementById('set-email').checked;
+      state.user.phone = document.getElementById('set-phone').value;
+      state.user.email = document.getElementById('set-email-addr').value;
+      showToast('알림 설정이 저장되었습니다.');
+      render();
+    }
+
+    function openNoticeModal(id) {
+      const n = state.notices.find(x => x.id === id);
+      if (!n) return;
+      n.read = true;
+      openModal(n.title, `<div class="text-xs text-slate-400">${escapeHtml(n.date)}</div><p class="leading-relaxed">${escapeHtml(n.content)}</p>`, `<button type="button" onclick="closeModal(); render();" class="px-4 py-2 rounded-xl bg-blue-700 text-white text-xs font-semibold cursor-pointer">확인</button>`);
+    }
+
+    function openAddNoticeModal() {
+      openModal('공지사항 작성', `
+        <div class="space-y-3">
+          <div><label class="block text-xs font-semibold mb-1">제목</label><input id="nt-title" type="text" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" /></div>
+          <div><label class="block text-xs font-semibold mb-1">내용</label><textarea id="nt-body" rows="4" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm"></textarea></div>
+        </div>
+      `, `
+        <button type="button" onclick="closeModal()" class="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold cursor-pointer">취소</button>
+        <button type="button" onclick="submitNewNotice()" class="px-4 py-2 rounded-xl bg-blue-700 text-white text-xs font-semibold cursor-pointer">등록</button>
+      `);
+    }
+
+    function submitNewNotice() {
+      const title = document.getElementById('nt-title').value.trim();
+      const content = document.getElementById('nt-body').value.trim();
+      if (!title) { showToast('제목을 입력해 주세요.', 'error'); return; }
+      state.notices.unshift({ id: Date.now(), title, summary: content.slice(0, 40) || title, date: '2026-11-20', read: false, content: content || title });
+      closeModal(); showToast('새 공지사항이 등록되었습니다.'); render();
+    }
+
+    // =========================================================================
+    // 11. 차트 초기화 및 전체 렌더링
+    // =========================================================================
+    function destroyCharts() {
+      chartInstances.forEach(ch => ch.destroy());
+      chartInstances = [];
+    }
+
+    function initHomeCharts() {
+      destroyCharts();
+      const wCtx = document.getElementById('weeklyChart');
+      const fCtx = document.getElementById('facilityChart');
+      const monthBuckets = {};
+      state.cases.forEach(c => {
+        const m = (c.date || '2026-11').slice(0, 7);
+        if (!monthBuckets[m]) monthBuckets[m] = { total: 0, done: 0 };
+        monthBuckets[m].total += 1;
+        if (c.stage === 'done') monthBuckets[m].done += 1;
+      });
+      const mLabels = Object.keys(monthBuckets).sort();
+      if (wCtx && window.Chart) {
+        chartInstances.push(new Chart(wCtx, {
+          type: 'bar',
+          data: {
+            labels: mLabels.length ? mLabels : ['2026-11'],
+            datasets: [
+              { label: '접수 건수', data: mLabels.map(k => monthBuckets[k].total), backgroundColor: '#1d4ed8', borderRadius: 6 },
+              { label: '종료 완료', data: mLabels.map(k => monthBuckets[k].done), backgroundColor: '#10b981', borderRadius: 6 }
+            ]
+          },
+          options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+        }));
+      }
+      const facCounts = {};
+      state.cases.forEach(c => { facCounts[c.facility] = (facCounts[c.facility] || 0) + 1; });
+      const topFac = Object.entries(facCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
+      if (fCtx && window.Chart) {
+        chartInstances.push(new Chart(fCtx, {
+          type: 'bar',
+          data: {
+            labels: topFac.map(x => x[0]),
+            datasets: [{ label: '접수 건수', data: topFac.map(x => x[1]), backgroundColor: '#3b82f6', borderRadius: 6 }]
+          },
+          options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+        }));
+      }
+    }
+
+    function render() {
+      destroyCharts();
+      const root = document.getElementById('app');
+      if (!state.user) {
+        root.innerHTML = renderLogin();
+        const form = document.getElementById('login-form');
+        if (form) {
+          form.addEventListener('submit', e => {
+            e.preventDefault();
+            loginWithCredentials(document.getElementById('login-id').value, document.getElementById('login-pw').value);
+          });
+        }
+        return;
+      }
+
+      let pageHtml = '';
+      if (state.route === 'home' && state.user.role === 'daehung') pageHtml = renderDaehungHome();
+      else if (state.route === 'cases') {
+        pageHtml = state.user.role === 'insurer' ? renderInsurerCases() : state.user.role === 'partner' ? renderPartnerCases() : renderDaehungCases();
+      }
+      else if (state.route === 'claims') {
+        pageHtml = state.user.role === 'insurer' ? renderInsurerClaims() : renderDaehungClaims();
+      }
+      else if (state.route === 'receipts') pageHtml = renderDaehungReceipts();
+      else if (state.route === 'settlements') pageHtml = renderDaehungSettlements();
+      else if (state.route === 'reconcile') pageHtml = renderDaehungReconcile();
+      else if (state.route === 'rates') pageHtml = renderDaehungRates();
+      else if (state.route === 'prices') pageHtml = renderDaehungPrices();
+      else if (state.route === 'accounts') pageHtml = renderPartnerAccounts();
+      else if (['acc_admin', 'acc_partner', 'acc_org'].includes(state.route)) pageHtml = renderDaehungAccounts(state.route);
+      else if (state.route === 'settings') pageHtml = renderSettings();
+      else if (state.route === 'notices') pageHtml = renderNotices();
+
+      root.innerHTML = renderShell(pageHtml);
+      if (window.lucide) lucide.createIcons();
+      if (state.route === 'home' && state.user.role === 'daehung') initHomeCharts();
+    }
+
+    render();
+    initSupabaseAndLoad(false);
+  </script>
 </body>
 </html>
