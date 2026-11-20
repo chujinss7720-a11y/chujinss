@@ -3,19 +3,20 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>대흥이엔씨 시스템 - 통합 복구 관리 시스템 (복구ON)</title>
+  <title>대흥이엔씨 - 통합 복구 관리 시스템 (복구ON)</title>
   <script src="https://cdn.tailwindcss.com/3.4.17"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
     body {
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
-      background-color: #f8fafc;
+      font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+      background-color: #f6f8fb;
       color: #0f172a;
+      letter-spacing: -0.01em;
     }
     .scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
     .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
@@ -268,12 +269,12 @@
       activeCaseId: null,
       wizardStep: 1,
       newCaseForm: {
-        insurerCaseNo: '', insurerPhone: '010-4821-3309',
+        insurerCaseNo: '', insurerPhone: '',
         openSec1: false, openSec2: false, openSec3: false, openSec4: false,
         insType: '자동차 대물', damageType: '3종 · 자동차 사고', cause: '차량 충돌',
         accidentDate: '2026-11-20', insurerManager: '김민수', deductible: '', guaranteePct: '100',
         adjCorp: '', adjManager: '',
-        facilityTitle: '', selectedFacilities: ['가드레일'], address: '', detailAddress: '', plate: '',
+        facilityTitle: '', selectedFacilities: [], address: '', detailAddress: '', plate: '',
         adminOrg: '', adminPhone: '', lat: 37.5665, lng: 126.9780, mapMode: 'normal',
         victimType: '개인', victimName: '', victimPhone: '', insuredName: '', insuredPhone: '',
         accidentDesc: '', prepareReview: false, files: []
@@ -615,8 +616,8 @@
         <div class="min-h-screen bg-slate-100 flex items-center justify-center p-4">
           <div class="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-md p-8">
             <div class="text-center mb-7">
-              <div class="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-blue-700 text-white font-bold text-lg mb-3 shadow-sm">대흥</div>
-              <h1 class="text-2xl font-bold text-blue-700 tracking-tight">대흥이엔씨 시스템</h1>
+              <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAANwAAAAbCAYAAAAXt+GNAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAA3dpVFh0WE1MOmNvbS5hZG9iZS54bXAAAAAAADw/eHBhY2tldCBiZWdpbj0i77u/IiBpZD0iVzVNME1wQ2VoaUh6cmVTek5UY3prYzlkIj8+IDx4OnhtcG1ldGEgeG1sbnM6eD0iYWRvYmU6bnM6bWV0YS8iIHg6eG1wdGs9IkFkb2JlIFhNUCBDb3JlIDkuMS1jMDAxIDc5LjE0NjI4OTk3NzcsIDIwMjMvMDYvMjUtMjM6NTc6MTQgICAgICAgICI+IDxyZGY6UkRGIHhtbG5zOnJkZj0iaHR0cDovL3d3dy53My5vcmcvMTk5OS8wMi8yMi1yZGYtc3ludGF4LW5zIyI+IDxyZGY6RGVzY3JpcHRpb24gcmRmOmFib3V0PSIiIHhtbG5zOnhtcE1NPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvbW0vIiB4bWxuczpzdFJlZj0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL3NUeXBlL1Jlc291cmNlUmVmIyIgeG1sbnM6eG1wPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvIiB4bXBNTTpPcmlnaW5hbERvY3VtZW50SUQ9InhtcC5kaWQ6YmM2NTQyNGMtY2QxZS1jMjRkLWI0MWUtOTM4YzRhNzgxZWY2IiB4bXBNTTpEb2N1bWVudElEPSJ4bXAuZGlkOkUyMjI5NTY2QkZGNzExRUVBOTkxRDc1MjVENURDNjhBIiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOkUyMjI5NTY1QkZGNzExRUVBOTkxRDc1MjVENURDNjhBIiB4bXA6Q3JlYXRvclRvb2w9IkFkb2JlIFBob3Rvc2hvcCAyNS4yIChXaW5kb3dzKSI+IDx4bXBNTTpEZXJpdmVkRnJvbSBzdFJlZjppbnN0YW5jZUlEPSJ4bXAuaWlkOjEzYTRmODI4LWIxZDMtMDc0My1hMjkxLWRiMWQyMjZmYjgxOSIgc3RSZWY6ZG9jdW1lbnRJRD0ieG1wLmRpZDpiYzY1NDI0Yy1jZDFlLWMyNGQtYjQxZS05MzhjNGE3ODFlZjYi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" alt="(주)대흥이엔씨 로고" class="h-10 max-w-full mx-auto mb-3 object-contain" />
+              <h1 class="text-2xl font-bold text-blue-700 tracking-tight">대흥이엔씨</h1>
               <p class="text-sm text-slate-500 mt-1">통합 복구 관리 시스템 · 복구ON</p>
             </div>
             <form id="login-form" class="space-y-4">
@@ -715,12 +716,9 @@
           <!-- 좌측 사이드바 -->
           <aside class="${state.mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 fixed lg:static inset-y-0 left-0 z-40 w-64 bg-white border-r border-slate-200 flex flex-col transition-transform duration-200 shrink-0">
             <div class="p-5 border-b border-slate-100">
-              <div class="flex items-center gap-2.5">
-                <div class="w-8 h-8 rounded-lg bg-blue-700 text-white font-bold text-xs flex items-center justify-center">대흥</div>
-                <div>
-                  <div class="text-sm font-bold text-slate-900">(주)대흥이엔씨</div>
-                  <div class="text-[11px] text-slate-500">나의 업무 공간 / ${escapeHtml(state.user.roleLabel)}</div>
-                </div>
+              <div class="space-y-1.5">
+                <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAANwAAAAbCAYAAAAXt+GNAAAAGXRFWHRTb2Z0d2FyZQBBZG9iZSBJbWFnZVJlYWR5ccllPAAAA3dpVFh0WE1MOmNvbS5hZG9iZS54bXAAAAAAADw/eHBhY2tldCBiZWdpbj0i77u/IiBpZD0iVzVNME1wQ2VoaUh6cmVTek5UY3prYzlkIj8+IDx4OnhtcG1ldGEgeG1sbnM6eD0iYWRvYmU6bnM6bWV0YS8iIHg6eG1wdGs9IkFkb2JlIFhNUCBDb3JlIDkuMS1jMDAxIDc5LjE0NjI4OTk3NzcsIDIwMjMvMDYvMjUtMjM6NTc6MTQgICAgICAgICI+IDxyZGY6UkRGIHhtbG5zOnJkZj0iaHR0cDovL3d3dy53My5vcmcvMTk5OS8wMi8yMi1yZGYtc3ludGF4LW5zIyI+IDxyZGY6RGVzY3JpcHRpb24gcmRmOmFib3V0PSIiIHhtbG5zOnhtcE1NPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvbW0vIiB4bWxuczpzdFJlZj0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL3NUeXBlL1Jlc291cmNlUmVmIyIgeG1sbnM6eG1wPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvIiB4bXBNTTpPcmlnaW5hbERvY3VtZW50SUQ9InhtcC5kaWQ6YmM2NTQyNGMtY2QxZS1jMjRkLWI0MWUtOTM4YzRhNzgxZWY2IiB4bXBNTTpEb2N1bWVudElEPSJ4bXAuZGlkOkUyMjI5NTY2QkZGNzExRUVBOTkxRDc1MjVENURDNjhBIiB4bXBNTTpJbnN0YW5jZUlEPSJ4bXAuaWlkOkUyMjI5NTY1QkZGNzExRUVBOTkxRDc1MjVENURDNjhBIiB4bXA6Q3JlYXRvclRvb2w9IkFkb2JlIFBob3Rvc2hvcCAyNS4yIChXaW5kb3dzKSI+IDx4bXBNTTpEZXJpdmVkRnJvbSBzdFJlZjppbnN0YW5jZUlEPSJ4bXAuaWlkOjEzYTRmODI4LWIxZDMtMDc0My1hMjkxLWRiMWQyMjZmYjgxOSIgc3RSZWY6ZG9jdW1lbnRJRD0ieG1wLmRpZDpiYzY1NDI0Yy1jZDFlLWMyNGQtYjQxZS05MzhjNGE3ODFlZjYi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" alt="(주)대흥이엔씨" class="h-6 max-w-full object-contain" />
+                <div class="text-[11px] text-slate-500">나의 업무 공간 / ${escapeHtml(state.user.roleLabel)}</div>
               </div>
             </div>
             <nav class="flex-1 p-3 space-y-1 overflow-y-auto scrollbar-thin">
@@ -2225,13 +2223,13 @@
     // =========================================================================
     function openNewCasePage() {
       state.newCaseForm = {
-        insurerCaseNo: '2026-' + Math.floor(10000 + Math.random() * 89999),
-        insurerPhone: state.user?.phone || '010-4821-3309',
-        openSec1: false, openSec2: true, openSec3: false, openSec4: false,
+        insurerCaseNo: '',
+        insurerPhone: '',
+        openSec1: false, openSec2: false, openSec3: false, openSec4: false,
         insType: '자동차 대물', damageType: '3종 · 자동차 사고', cause: '차량 충돌',
         accidentDate: '2026-11-20', insurerManager: state.user?.name || '김민수', deductible: '', guaranteePct: '100',
         adjCorp: '', adjManager: '',
-        facilityTitle: '', selectedFacilities: ['가드레일'], address: '', detailAddress: '', plate: '',
+        facilityTitle: '', selectedFacilities: [], address: '', detailAddress: '', plate: '',
         adminOrg: '', adminPhone: '',
         victimType: '개인', victimName: '', victimPhone: '', insuredName: '', insuredPhone: '',
         accidentDesc: '', prepareReview: false, files: []
@@ -2362,26 +2360,28 @@
       const f = state.newCaseForm;
       return `
         <div class="flex items-center justify-between">
-          <div>
-            <h2 class="text-xl font-bold text-slate-900">복구의뢰 접수</h2>
-            <p class="text-sm text-slate-500 mt-0.5">필수 2개 항목만 입력해도 바로 접수되며, 상세 정보는 접수 후 이어서 적을 수 있습니다.</p>
+          <div class="flex items-center gap-3">
+            <button type="button" onclick="navigate('cases')" class="px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer">← 목록으로</button>
+            <div>
+              <h2 class="text-xl font-bold text-slate-900">복구의뢰 접수</h2>
+              <p class="text-xs text-slate-500 mt-0.5">필수 2칸만 적고 바로 접수한 뒤, 나머지 내용은 다음 화면에서 이어서 적을 수 있습니다.</p>
+            </div>
           </div>
-          <button type="button" onclick="navigate('cases')" class="px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer">목록으로</button>
         </div>
 
-        <div class="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
-          <div class="flex items-center justify-between">
-            <h3 class="text-sm font-bold text-slate-900">1. 꼭 적을 것 2칸 (필수)</h3>
-            <span class="px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 text-[11px] font-semibold">필수 입력</span>
+        <div class="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 space-y-4 shadow-2xs">
+          <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+            <h3 class="text-base font-bold text-slate-900">꼭 적을 것 2칸</h3>
+            <span class="px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-700 text-[11px] font-bold">필수</span>
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label class="block text-xs font-semibold text-slate-700 mb-1">보험사 접수(사고)번호 *</label>
-              <input id="nc-no" type="text" value="${escapeHtml(f.insurerCaseNo)}" oninput="state.newCaseForm.insurerCaseNo=this.value" placeholder="예: 2026-15853" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm" />
+              <label class="block text-xs font-bold text-slate-700 mb-1.5">보험사 접수(사고)번호 <span class="text-rose-600">*</span></label>
+              <input id="nc-no" type="text" value="${escapeHtml(f.insurerCaseNo)}" oninput="state.newCaseForm.insurerCaseNo=this.value" placeholder="예: 2026-15853" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600" />
             </div>
             <div>
-              <label class="block text-xs font-semibold text-slate-700 mb-1">담당자 전화번호 *</label>
-              <input id="nc-phone" type="text" value="${escapeHtml(f.insurerPhone)}" oninput="state.newCaseForm.insurerPhone=this.value" placeholder="010-0000-0000" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm" />
+              <label class="block text-xs font-bold text-slate-700 mb-1.5">담당자 전화번호 <span class="text-rose-600">*</span></label>
+              <input id="nc-phone" type="text" value="${escapeHtml(f.insurerPhone)}" oninput="state.newCaseForm.insurerPhone=this.value" placeholder="예: 010-1234-5678" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600" />
             </div>
           </div>
         </div>
