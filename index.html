@@ -1,3 +1,4 @@
+```html
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -164,7 +165,7 @@
         sbClient = window.supabase.createClient(cfg.url, cfg.anonKey);
         const { data: caseRows, error } = await sbClient.from('cases').select('*').order('received_date', { ascending: false });
         if (error) throw error;
-        if (Array.isArray(caseRows) && caseRows.length > 0) {
+        if (Array.isArray(caseRows)) {
           state.cases = caseRows.map(mapDbCaseToApp);
         }
         const { data: rateRows } = await sbClient.from('insurer_rates').select('*').order('id', { ascending: true });
@@ -283,7 +284,7 @@
       claimsFilter: { kind: '전체', period: '전체', tab: 'all', startDate: '', endDate: '' },
       receiptsFilter: { kind: '전체', period: '전체', tab: 'need_confirm', selectedId: null },
       settlementsFilter: { company: '전체', payStatus: '전체', period: '전체', showCompanyBar: false, selectedIds: [] },
-      pricesFilter: { basis: '2026 표준품셈', cat: '전체', q: '' },
+      pricesFilter: { insurer: '전체', cat: '전체', q: '' },
       noticesTab: 'all',
       accountsSearch: '',
       homeFilter: { kind: '전체', period: '전체', showExtraAnalysis: false },
@@ -301,77 +302,14 @@
         accidentDesc: '', prepareReview: false, files: []
       },
       // 핵심 데이터
-      cases: [
-        {
-          id: 'DH-2026-1104', date: '2026-11-16', elapsedDays: 4, kind: '3종', facility: '가드레일',
-          title: '강변북로 구리방면 가드레일 12m 파손 복구', address: '서울 광진구 자양동 221-4', plate: '서울74사 8821',
-          insurerOrg: '버스공제조합', partnerOrg: '한빛복구', partnerManager: '박지훈',
-          stage: '02', step13: 5, partnerStep6: 2, partnerStatus: '최초견적 제출 · 내 차례',
-          insurerTask: 'todo', insurerAction: '이어서 적기', insurerGuide: '피해 차량 및 사고 경위 보완 입력이 필요합니다.',
-          dueDate: '2026-11-22', overdue: false,
-          partnerClaimAmt: 3450000, insurerClaimAmt: 3680000, confirmedAmt: 0, receivedAmt: 0, feeRate: 0.12, paidAmt: 0,
-          claimStage: 'need_write', claimReadStep: 1, paidStatus: '미지급'
-        },
-        {
-          id: 'DH-2026-1098', date: '2026-11-10', elapsedDays: 10, kind: '1종', facility: '신호등·지주',
-          title: '영동대로 삼성역 사거리 교통신호기 지주 추돌', address: '서울 강남구 삼성동 159', plate: '경기71아 4102',
-          insurerOrg: '버스공제조합', partnerOrg: '한빛복구', partnerManager: '미지정',
-          stage: '01', step13: 2, partnerStep6: 1, partnerStatus: '담당자 지정 · 내 차례',
-          insurerTask: 'progress', insurerAction: '진행 상세 보기', insurerGuide: '시공파트너사 현장 담당자 배정이 진행 중입니다.',
-          dueDate: '2026-11-18', overdue: true,
-          partnerClaimAmt: 0, insurerClaimAmt: 0, confirmedAmt: 0, receivedAmt: 0, feeRate: 0.12, paidAmt: 0,
-          claimStage: 'none', claimReadStep: 0, paidStatus: '미지급'
-        },
-        {
-          id: 'DH-2026-1085', date: '2026-10-27', elapsedDays: 24, kind: '3종', facility: '방음벽',
-          title: '올림픽대로 여의하류 방음판 6경간 교체', address: '서울 영등포구 여의도동 84-2', plate: '서울70바 1933',
-          insurerOrg: '화물공제조합', partnerOrg: '한빛복구', partnerManager: '박지훈',
-          stage: '03', step13: 9, partnerStep6: 5, partnerStatus: '대흥이엔씨 처리 중',
-          insurerTask: 'todo', insurerAction: '청구 서류 확인', insurerGuide: '보험사 청구서가 공개되었습니다. 내용을 확인해 주세요.',
-          dueDate: '2026-11-14', overdue: true,
-          partnerClaimAmt: 8200000, insurerClaimAmt: 8950000, confirmedAmt: 8600000, receivedAmt: 0, feeRate: 0.12, paidAmt: 0,
-          claimStage: 'wait_read', claimReadStep: 2, paidStatus: '미지급'
-        },
-        {
-          id: 'DH-2026-1071', date: '2026-10-19', elapsedDays: 32, kind: '1종', facility: '가로등',
-          title: '서부간선도로 고척교 인근 가로등주 전도 복구', address: '서울 구로구 고척동 63-1', plate: '인천72자 5509',
-          insurerOrg: '버스공제조합', partnerOrg: '한빛복구', partnerManager: '김태우',
-          stage: '04', step13: 11, partnerStep6: 6, partnerStatus: '완료',
-          insurerTask: 'done', insurerAction: '청구서 보기', insurerGuide: '보험금 수령 완료 후 업체 정산 대기 상태입니다.',
-          dueDate: '2026-11-05', overdue: false,
-          partnerClaimAmt: 4100000, insurerClaimAmt: 4480000, confirmedAmt: 4480000, receivedAmt: 4480000, feeRate: 0.12, paidAmt: 0,
-          claimStage: 'read_done', claimReadStep: 3, paidStatus: '지급 대기'
-        },
-        {
-          id: 'DH-2026-1062', date: '2026-10-11', elapsedDays: 40, kind: '3종', facility: '도로표지판',
-          title: '내부순환로 홍은램프 문형식 표지판 손상', address: '서울 서대문구 홍은동 412', plate: '서울75사 2048',
-          insurerOrg: '삼성화재', partnerOrg: '태성인프라', partnerManager: '정현수',
-          stage: '03', step13: 8, partnerStep6: 5, partnerStatus: '대흥이엔씨 처리 중',
-          insurerTask: 'progress', insurerAction: '상세 보기', insurerGuide: '보험사 청구서 작성 및 검토 단계입니다.',
-          dueDate: '2026-11-12', overdue: true,
-          partnerClaimAmt: 11200000, insurerClaimAmt: 12150000, confirmedAmt: 0, receivedAmt: 0, feeRate: 0.10, paidAmt: 0,
-          claimStage: 'need_write', claimReadStep: 1, paidStatus: '미지급'
-        },
-        {
-          id: 'DH-2026-1044', date: '2026-10-02', elapsedDays: 49, kind: '1종', facility: '중앙분리대',
-          title: '동부간선도로 월계교 중앙분리대 콘크리트 보수', address: '서울 노원구 월계동 501', plate: '경기78바 9912',
-          insurerOrg: '버스공제조합', partnerOrg: '태성인프라', partnerManager: '정현수',
-          stage: 'done', step13: 13, partnerStep6: 6, partnerStatus: '완료',
-          insurerTask: 'done', insurerAction: '청구서 보기', insurerGuide: '전체 정산 및 종결이 완료되었습니다.',
-          dueDate: '2026-10-28', overdue: false,
-          partnerClaimAmt: 5600000, insurerClaimAmt: 6100000, confirmedAmt: 5950000, receivedAmt: 5950000, feeRate: 0.10, paidAmt: 5355000,
-          claimStage: 'read_done', claimReadStep: 3, paidStatus: '지급 완료'
-        }
-      ],
+      cases: [],
       notices: [
         { id: 1, title: '[필독] 2026년 11월 도로시설물 복구 표준단가표 적용 안내', summary: '재료비·노무비 일부 항목 단가가 11월 1일 접수 건부터 갱신되었습니다.', date: '2026-11-15', read: false, content: '2026년 11월 1일 이후 신규 접수된 도로시설물 피해복구 건부터 개정된 표준단가표가 적용됩니다. 보험사·단가 관리 메뉴에서 세부 비목 단가를 확인하실 수 있습니다.' },
         { id: 2, title: '시공파트너사 현장 사진 및 최초견적 등록 기한 준수 요청', summary: '현장 배정 후 48시간 이내 최초 사진 및 견적서 업로드를 권장합니다.', date: '2026-11-11', read: false, content: '신속한 보험사 협의 및 복구 일정 안내를 위해 담당자 지정 후 48시간 이내에 현장 전경/파손 부위 사진 및 최초견적을 등록해 주시기 바랍니다.' },
         { id: 3, title: '이카운트 입출금 엑셀 자동 대조 기능 업데이트 안내', summary: '관리자 청구·정산 메뉴에서 은행 입출금 내역 자동 매칭이 지원됩니다.', date: '2026-11-03', read: true, content: '관리자 메뉴의 입출금 대조 페이지에서 이카운트 엑셀 파일을 업로드하면 보험금 수령 내역과 자동 매칭됩니다.' }
       ],
       notifications: [
-        { id: 'n1', text: '[DH-2026-1085] 보험사 청구서가 공개되었습니다.', time: '10분 전', read: false },
-        { id: 'n2', text: '[DH-2026-1098] 복구 예정일이 경과했습니다.', time: '1시간 전', read: false },
-        { id: 'n3', text: '11월 표준단가표 개정 공지가 등록되었습니다.', time: '어제', read: true }
+        { id: 'n3', text: '11월 표준단가표 개정 공지가 등록되었습니다.', time: '오늘', read: false }
       ],
       insurerRates: [
         { id: 'ir1', name: '버스공제조합', overhead: '일반관리비 6% / 이윤 10% (천원 미만 절사)', fee: '12%', surveyFee: '150,000원' },
@@ -379,11 +317,18 @@
         { id: 'ir3', name: '삼성화재', overhead: '일반관리비 6% / 이윤 12% (원단위 절사)', fee: '10%', surveyFee: '180,000원' }
       ],
       unitPrices: [
-        { id: 'up1', cat: '재료비', item: '가드레일 보 (W형 3.2T)', spec: '4,000×310×3.2mm', unit: '본', price: 84000, basis: '조달청 2026-11' },
-        { id: 'up2', cat: '재료비', item: '방음판 (알루미늄 흡음형)', spec: '1,960×500×95mm', unit: '매', price: 142000, basis: '표준시장단가' },
-        { id: 'up3', cat: '노무비', item: '보통인부', spec: '도로시설물 현장 보조', unit: '인', price: 165000, basis: '대한건설협회 2026 하반기' },
-        { id: 'up4', cat: '노무비', item: '철공(특수용접)', spec: '지주 및 브라켓 설치', unit: '인', price: 248000, basis: '대한건설협회 2026 하반기' },
-        { id: 'up5', cat: '경비', item: '신호수 및 교통통제차량', spec: '사인보드 카 1일 임차', unit: '대·일', price: 380000, basis: '표준품셈 기계경비' }
+        { id: 'up1', insurer: '공통', cat: '재료비', item: '가드레일 보 (W형 3.2T)', spec: '4,000×310×3.2mm', unit: '본', price: 84000, basis: '조달청 2026-11', fav: true },
+        { id: 'up2', insurer: '버스공제조합', cat: '재료비', item: '가드레일 지주 (Ø114.3)', spec: 'L=1,800mm 아연도금', unit: '본', price: 46000, basis: '버스공제 2026 단가', fav: true },
+        { id: 'up3', insurer: '화물공제조합', cat: '재료비', item: '방음판 (알루미늄 흡음형)', spec: '1,960×500×95mm', unit: '매', price: 142000, basis: '화물공제 표준단가', fav: false },
+        { id: 'up4', insurer: '공통', cat: '노무비', item: '보통인부', spec: '도로시설물 현장 보조', unit: '인', price: 165000, basis: '대한건설협회 2026 하반기', fav: true },
+        { id: 'up5', insurer: '공통', cat: '노무비', item: '철공(특수용접)', spec: '지주 및 브라켓 설치', unit: '인', price: 248000, basis: '대한건설협회 2026 하반기', fav: false },
+        { id: 'up6', insurer: '삼성화재', cat: '경비', item: '신호수 및 교통통제차량', spec: '사인보드 카 1일 임차', unit: '대·일', price: 380000, basis: '삼성화재 표준품셈', fav: true }
+      ],
+      estimateTemplates: [
+        { id: 'tpl1', name: '가드레일 기본 복구 세트', items: [
+          { cat: '재료비', item: '가드레일 보 (W형 3.2T)', unit: '본', qty: 3, price: 84000 },
+          { cat: '노무비', item: '보통인부', unit: '인', qty: 2, price: 165000 }
+        ]}
       ],
       adminAccounts: [
         { id: 'adm1', name: '이서연', loginId: 'daehung', noti: 'SMS · 이메일', status: '활성' },
@@ -402,10 +347,7 @@
         { id: 'pa2', name: '김태우 (부계정 1)', email: 'hanbit_sub1@hanbitfix.co.kr', phone: '010-3321-1904', status: '활성' },
         { id: 'pa3', name: '오민석 (부계정 2)', email: 'hanbit_sub2@hanbitfix.co.kr', phone: '010-8109-4427', status: '중지' }
       ],
-      reconcileLogs: [
-        { id: 'rc1', date: '2026-11-14', bank: '기업은행 (주거래)', desc: '버스공제조합 DH-2026-1071', amount: 4480000, matchedCase: 'DH-2026-1071', status: '매칭 완료' },
-        { id: 'rc2', date: '2026-11-02', bank: '기업은행 (주거래)', desc: '버스공제조합 DH-2026-1044', amount: 5950000, matchedCase: 'DH-2026-1044', status: '매칭 완료' }
-      ]
+      reconcileLogs: []
     };
 
     let chartInstances = [];
@@ -1612,43 +1554,126 @@
       `;
     }
 
+    function getInsurerFilterOptions() {
+      const names = ['공통', ...state.insurerRates.map(r => r.name)];
+      return [...new Set(names)];
+    }
+
+    function openUnitPriceModal(upId = null) {
+      const existing = upId ? state.unitPrices.find(u => u.id === upId) : null;
+      const insurers = getInsurerFilterOptions();
+      openModal(existing ? '단가 항목 수정' : '공제사·보험사별 단가 등록', `
+        <div class="space-y-3 text-xs">
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block font-semibold mb-1">적용 공제사·보험사</label>
+              <select id="up-ins" class="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white">
+                ${insurers.map(n => `<option value="${escapeHtml(n)}" ${(existing?.insurer || '공통')===n?'selected':''}>${escapeHtml(n)}</option>`).join('')}
+              </select>
+            </div>
+            <div>
+              <label class="block font-semibold mb-1">비목</label>
+              <select id="up-cat" class="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white">
+                ${['재료비','노무비','경비'].map(k => `<option ${(existing?.cat || '재료비')===k?'selected':''}>${k}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label class="block font-semibold mb-1">품목명 *</label>
+            <input id="up-item" type="text" value="${escapeHtml(existing?.item || '')}" placeholder="예: 가드레일 보 (W형 3.2T)" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" />
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div><label class="block font-semibold mb-1">공정·규격</label><input id="up-spec" type="text" value="${escapeHtml(existing?.spec || '')}" placeholder="예: 4,000×310×3.2mm" class="w-full px-3 py-2 rounded-xl border border-slate-200" /></div>
+            <div><label class="block font-semibold mb-1">단위</label><input id="up-unit" type="text" value="${escapeHtml(existing?.unit || '식')}" class="w-full px-3 py-2 rounded-xl border border-slate-200" /></div>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div><label class="block font-semibold mb-1">기준 단가 (원) *</label><input id="up-price" type="number" value="${existing?.price || 0}" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm font-bold" /></div>
+            <div><label class="block font-semibold mb-1">산출 근거</label><input id="up-basis" type="text" value="${escapeHtml(existing?.basis || '2026 표준품셈')}" class="w-full px-3 py-2 rounded-xl border border-slate-200" /></div>
+          </div>
+        </div>
+      `, `
+        <button type="button" onclick="closeModal()" class="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold cursor-pointer">취소</button>
+        <button type="button" onclick="saveUnitPrice('${upId || ''}')" class="px-4 py-2 rounded-xl bg-blue-700 text-white text-xs font-semibold cursor-pointer">저장</button>
+      `);
+    }
+
+    function saveUnitPrice(upId) {
+      const item = document.getElementById('up-item').value.trim();
+      const price = Number(document.getElementById('up-price').value) || 0;
+      if (!item) { showToast('품목명을 입력해 주세요.', 'error'); return; }
+      const payload = {
+        insurer: document.getElementById('up-ins').value,
+        cat: document.getElementById('up-cat').value,
+        item,
+        spec: document.getElementById('up-spec').value.trim() || '-',
+        unit: document.getElementById('up-unit').value.trim() || '식',
+        price,
+        basis: document.getElementById('up-basis').value.trim() || '표준단가'
+      };
+      if (upId) {
+        const idx = state.unitPrices.findIndex(u => u.id === upId);
+        if (idx >= 0) state.unitPrices[idx] = { ...state.unitPrices[idx], ...payload };
+        showToast('단가 항목이 수정되었습니다.');
+      } else {
+        state.unitPrices.unshift({ id: 'up' + Date.now(), ...payload, fav: false });
+        showToast('새 단가 항목이 등록되었습니다.');
+      }
+      closeModal();
+      render();
+    }
+
+    function deleteUnitPrice(upId) {
+      state.unitPrices = state.unitPrices.filter(u => u.id !== upId);
+      showToast('단가 항목이 삭제되었습니다.', 'info');
+      render();
+    }
+
     function renderDaehungPrices() {
       const f = state.pricesFilter;
+      const insurers = ['전체', ...getInsurerFilterOptions()];
       const list = state.unitPrices.filter(u => {
+        if (f.insurer !== '전체' && u.insurer !== f.insurer) return false;
         if (f.cat !== '전체' && u.cat !== f.cat) return false;
-        if (f.q && !`${u.item} ${u.spec} ${u.basis}`.toLowerCase().includes(f.q.toLowerCase())) return false;
+        if (f.q && !`${u.item} ${u.spec} ${u.basis} ${u.insurer}`.toLowerCase().includes(f.q.toLowerCase())) return false;
         return true;
       });
       return `
-        <div>
-          <h2 class="text-xl font-bold text-slate-900">단가표</h2>
-          <p class="text-sm text-slate-500 mt-0.5">비목별 기준 단가와 산출 근거를 관리합니다.</p>
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 class="text-xl font-bold text-slate-900">단가표</h2>
+            <p class="text-sm text-slate-500 mt-0.5">공제사·보험사별 기준 단가를 등록·수정·삭제하면 복구업체 견적 작성 시 바로 불러올 수 있습니다.</p>
+          </div>
+          <button type="button" onclick="openUnitPriceModal()" class="px-4 py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-semibold self-start cursor-pointer">+ 단가 항목 추가</button>
         </div>
-        <div class="bg-white rounded-2xl border border-slate-200 p-4 flex flex-wrap items-center justify-between gap-3">
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 space-y-3">
           <div class="flex flex-wrap items-center gap-2">
+            <select onchange="state.pricesFilter.insurer=this.value; render();" class="px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white">
+              ${insurers.map(ins => `<option value="${escapeHtml(ins)}" ${f.insurer===ins?'selected':''}>공제사·보험사: ${escapeHtml(ins)}</option>`).join('')}
+            </select>
             ${['전체', '재료비', '노무비', '경비'].map(c => `
               <button type="button" onclick="state.pricesFilter.cat='${c}'; render();" class="px-3 py-1.5 rounded-full text-xs font-semibold cursor-pointer ${f.cat===c?'bg-blue-700 text-white':'bg-slate-100 text-slate-700'}">${c}</button>
             `).join('')}
-            <input type="text" value="${escapeHtml(f.q)}" oninput="state.pricesFilter.q=this.value; render();" placeholder="비목·규격 검색" class="px-3 py-1.5 rounded-xl border border-slate-200 text-xs" />
-          </div>
-          <div class="flex gap-2">
-            <button type="button" onclick="showToast('단가표 엑셀 내려받기를 시작했습니다.', 'info')" class="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold cursor-pointer">엑셀 내려받기</button>
-            <button type="button" onclick="showToast('단가표 일괄 반영이 완료되었습니다.')" class="px-3 py-1.5 rounded-lg bg-slate-900 text-white text-xs font-semibold cursor-pointer">엑셀 올리기</button>
+            <input type="text" value="${escapeHtml(f.q)}" oninput="state.pricesFilter.q=this.value; render();" placeholder="비목·규격·공제사 검색" class="flex-1 min-w-[160px] px-3 py-1.5 rounded-xl border border-slate-200 text-xs" />
           </div>
         </div>
         <div class="bg-white rounded-2xl border border-slate-200 overflow-x-auto">
-          <table class="w-full text-left text-sm min-w-[680px]">
+          <table class="w-full text-left text-sm min-w-[760px]">
             <thead class="bg-slate-50 border-b border-slate-200 text-xs text-slate-500">
-              <tr><th class="px-4 py-3">비목·세부</th><th class="px-4 py-3">공정·규격</th><th class="px-4 py-3">단위</th><th class="px-4 py-3">기준 단가</th><th class="px-4 py-3">근거</th></tr>
+              <tr><th class="px-4 py-3">적용 공제사</th><th class="px-4 py-3">비목·세부</th><th class="px-4 py-3">공정·규격</th><th class="px-4 py-3">단위</th><th class="px-4 py-3">기준 단가</th><th class="px-4 py-3">근거</th><th class="px-4 py-3 text-right">관리</th></tr>
             </thead>
             <tbody class="divide-y divide-slate-100 text-xs">
               ${list.map(u => `
                 <tr>
+                  <td class="px-4 py-3"><span class="px-2 py-0.5 rounded-md font-semibold ${u.insurer==='공통'?'bg-slate-100 text-slate-700':'bg-blue-50 text-blue-700'}">${escapeHtml(u.insurer || '공통')}</span></td>
                   <td class="px-4 py-3"><span class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold mr-1.5">${escapeHtml(u.cat)}</span><span class="font-bold text-slate-900">${escapeHtml(u.item)}</span></td>
                   <td class="px-4 py-3 text-slate-600">${escapeHtml(u.spec)}</td>
                   <td class="px-4 py-3">${escapeHtml(u.unit)}</td>
                   <td class="px-4 py-3 font-bold text-blue-700">${won(u.price)}</td>
                   <td class="px-4 py-3 text-slate-500">${escapeHtml(u.basis)}</td>
+                  <td class="px-4 py-3 text-right space-x-1">
+                    <button type="button" onclick="openUnitPriceModal('${u.id}')" class="px-2.5 py-1 rounded-lg border border-slate-200 hover:bg-slate-50 font-semibold cursor-pointer">수정</button>
+                    <button type="button" onclick="deleteUnitPrice('${u.id}')" class="px-2.5 py-1 rounded-lg border border-rose-200 text-rose-700 hover:bg-rose-50 font-semibold cursor-pointer">삭제</button>
+                  </td>
                 </tr>
               `).join('')}
             </tbody>
@@ -3194,32 +3219,119 @@
       if (goEstimate) openEstimatePage(caseId); else render();
     }
 
+    const estPickerState = { q: '', onlyFav: false, scope: 'insurer' };
+
+    function toggleUnitFav(upId) {
+      const u = state.unitPrices.find(x => x.id === upId);
+      if (u) { u.fav = !u.fav; render(); }
+    }
+
+    function addUnitToEstimate(caseId, upId) {
+      const c = state.cases.find(x => x.id === caseId);
+      const u = state.unitPrices.find(x => x.id === upId);
+      if (c && u) {
+        c.estimateItems.push({ id: 'ei' + Date.now() + Math.random().toString(36).slice(2,5), cat: u.cat, item: u.item, unit: u.unit, qty: 1, price: u.price });
+        showToast(`'${u.item}' 항목을 견적에 추가했습니다.`);
+        render();
+      }
+    }
+
+    function saveCurrentAsTemplate(caseId) {
+      const c = state.cases.find(x => x.id === caseId);
+      if (!c || !c.estimateItems.length) return;
+      state.estimateTemplates.unshift({
+        id: 'tpl' + Date.now(),
+        name: `${c.facility} 견적 템플릿 (${c.estimateItems.length}항목)`,
+        items: c.estimateItems.map(i => ({ cat: i.cat, item: i.item, unit: i.unit, qty: i.qty, price: i.price }))
+      });
+      showToast('현재 견적을 템플릿으로 저장했습니다.');
+      render();
+    }
+
+    function applyEstimateTemplate(caseId, tplId) {
+      const c = state.cases.find(x => x.id === caseId);
+      const tpl = state.estimateTemplates.find(t => t.id === tplId);
+      if (c && tpl) {
+        tpl.items.forEach(it => c.estimateItems.push({ id: 'ei' + Date.now() + Math.random().toString(36).slice(2,5), ...it }));
+        showToast(`'${tpl.name}' 항목을 불러왔습니다.`);
+        render();
+      }
+    }
+
     function renderEstimateEditPage() {
       const c = ensureCaseDetails(state.cases.find(x => x.id === state.activeCaseId));
       if (!c) { navigate('cases'); return ''; }
       const totals = calcEstimateTotals(c.estimateItems, 0.05, 0.10);
+      const q = estPickerState.q.trim().toLowerCase();
+      const matchedUnits = state.unitPrices.filter(u => {
+        if (estPickerState.onlyFav && !u.fav) return false;
+        if (estPickerState.scope === 'insurer' && u.insurer !== '공통' && u.insurer !== c.insurerOrg) return false;
+        if (q && !`${u.item} ${u.spec} ${u.cat} ${u.insurer}`.toLowerCase().includes(q)) return false;
+        return true;
+      });
 
       return `
         <div class="flex items-center justify-between">
           <div>
             <h2 class="text-xl font-bold text-slate-900">견적·업체 청구 작성</h2>
-            <p class="text-xs text-slate-500 mt-0.5">${escapeHtml(c.id)} · ${escapeHtml(c.title)}</p>
+            <p class="text-xs text-slate-500 mt-0.5">${escapeHtml(c.id)} · ${escapeHtml(c.title)} · 적용 공제사: <strong>${escapeHtml(c.insurerOrg)}</strong></p>
           </div>
           <button type="button" onclick="navigate('cases')" class="px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold cursor-pointer">목록으로</button>
+        </div>
+
+        <!-- 공제사별 단가표 검색 · 즐겨찾기 · 템플릿 불러오기 카드 -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-5 space-y-3">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 class="text-sm font-bold text-slate-900">견적 항목 검색·추가 (대흥이엔씨 공제사별 단가표 연동)</h3>
+              <p class="text-xs text-slate-500">대흥이엔씨에서 등록한 ${escapeHtml(c.insurerOrg)} 및 공통 단가를 검색하거나 ★ 즐겨찾기로 바로 불러옵니다.</p>
+            </div>
+            <div class="flex flex-wrap gap-1.5">
+              <button type="button" onclick="estPickerState.onlyFav=!estPickerState.onlyFav; render();" class="px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer ${estPickerState.onlyFav ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-800 border border-amber-200'}">★ 즐겨찾기</button>
+              <button type="button" onclick="saveCurrentAsTemplate('${c.id}')" class="px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer">+ 지금 견적을 템플릿으로 저장</button>
+            </div>
+          </div>
+
+          <div class="flex flex-col sm:flex-row gap-2">
+            <div class="relative flex-1">
+              <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
+              <input type="text" value="${escapeHtml(estPickerState.q)}" oninput="estPickerState.q=this.value; render();" placeholder="품목명·규격·비목 검색" class="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 text-xs" />
+            </div>
+            <select onchange="estPickerState.scope=this.value; render();" class="px-3 py-2 rounded-xl border border-slate-200 text-xs bg-white font-semibold">
+              <option value="insurer" ${estPickerState.scope==='insurer'?'selected':''}>${escapeHtml(c.insurerOrg)} + 공통 단가만</option>
+              <option value="all" ${estPickerState.scope==='all'?'selected':''}>전체 공제사 단가 보기</option>
+            </select>
+            ${state.estimateTemplates.length > 0 ? `
+              <select onchange="if(this.value){applyEstimateTemplate('${c.id}', this.value); this.value='';}" class="px-3 py-2 rounded-xl border border-blue-200 bg-blue-50 text-blue-800 text-xs font-semibold">
+                <option value="">견적 템플릿 불러오기...</option>
+                ${state.estimateTemplates.map(t => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join('')}
+              </select>
+            ` : ''}
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-52 overflow-y-auto scrollbar-thin pt-1">
+            ${matchedUnits.length > 0 ? matchedUnits.map(u => `
+              <div class="p-2.5 rounded-xl border border-slate-200 bg-slate-50/70 flex items-center justify-between gap-2 text-xs">
+                <div class="min-w-0">
+                  <div class="flex items-center gap-1">
+                    <button type="button" onclick="toggleUnitFav('${u.id}')" class="text-sm leading-none cursor-pointer ${u.fav ? 'text-amber-500' : 'text-slate-300'}" title="즐겨찾기">★</button>
+                    <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-white border border-slate-200">${escapeHtml(u.insurer)}</span>
+                    <span class="font-bold text-slate-900 truncate">${escapeHtml(u.item)}</span>
+                  </div>
+                  <div class="text-[11px] text-slate-500 mt-0.5 truncate">${escapeHtml(u.spec)} · <strong class="text-blue-700">${won(u.price)}</strong>/${escapeHtml(u.unit)}</div>
+                </div>
+                <button type="button" onclick="addUnitToEstimate('${c.id}','${u.id}')" class="px-2.5 py-1.5 rounded-lg bg-blue-700 text-white font-semibold shrink-0 cursor-pointer hover:bg-blue-800">+ 추가</button>
+              </div>
+            `).join('') : '<div class="col-span-full text-center text-xs text-slate-400 py-4">조건에 맞는 단가 항목이 없습니다.</div>'}
+          </div>
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
           <div class="lg:col-span-2 space-y-4">
             <div class="bg-white rounded-2xl border border-slate-200 p-5 space-y-3">
               <div class="flex flex-wrap items-center justify-between gap-2">
-                <h3 class="text-sm font-bold text-slate-900">공정별 견적 항목</h3>
-                <div class="flex gap-2">
-                  <select id="est-unit-pick" class="px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs bg-white">
-                    ${state.unitPrices.map(u => `<option value="${u.id}">[${u.cat}] ${escapeHtml(u.item)} (${won(u.price)})</option>`).join('')}
-                  </select>
-                  <button type="button" onclick="addEstimateFromUnit('${c.id}')" class="px-3 py-1.5 rounded-lg bg-blue-700 text-white text-xs font-semibold cursor-pointer">+ 단가표 추가</button>
-                  <button type="button" onclick="addBlankEstimateRow('${c.id}')" class="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold cursor-pointer">+ 직접 추가</button>
-                </div>
+                <h3 class="text-sm font-bold text-slate-900">공정별 견적 내역 (${c.estimateItems.length}건)</h3>
+                <button type="button" onclick="addBlankEstimateRow('${c.id}')" class="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold cursor-pointer">+ 단가표에 없는 항목 추가</button>
               </div>
 
               <div class="space-y-2">
@@ -3265,11 +3377,7 @@
       `;
     }
 
-    function addEstimateFromUnit(caseId) {
-      const c = state.cases.find(x => x.id === caseId);
-      const u = state.unitPrices.find(x => x.id === document.getElementById('est-unit-pick').value);
-      if (c && u) { c.estimateItems.push({ id: 'ei' + Date.now(), cat: u.cat, item: u.item, unit: u.unit, qty: 1, price: u.price }); render(); }
-    }
+
 
     function addBlankEstimateRow(caseId) {
       const c = state.cases.find(x => x.id === caseId);
@@ -4162,3 +4270,4 @@
   </script>
 </body>
 </html>
+```
