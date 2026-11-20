@@ -91,7 +91,30 @@
         paidAmt: Number(r.paid_amt || 0),
         claimStage: r.claim_stage || 'none',
         claimReadStep: Number(r.claim_read_step || 0),
-        paidStatus: r.paid_status || '미지급'
+        paidStatus: r.paid_status || '미지급',
+        insurerCaseNo: r.case_no,
+        insurerPhone: '010-4821-3309',
+        insType: '자동차 대물',
+        damageType: '3종 · 자동차 사고',
+        cause: '차량 충돌',
+        accidentDate: recDate,
+        deductible: 0,
+        guaranteePct: 100,
+        victimName: '서울시설공단',
+        victimPhone: '02-2290-6114',
+        accidentDesc: r.insurer_guide || '',
+        reportDesc: '현장 파손 범위 확인 및 안전조치 후 복구 진행',
+        reportPlan: '파손 부재 철거 및 표준품셈 규격 자재 교체',
+        completedDate: '',
+        workDone: r.stage === '04' || r.stage === 'done',
+        photos: { before: [], during: [], after: [], docs: [] },
+        estimateItems: [
+          { id: 'ei1', cat: '재료비', item: '가드레일 보 (W형 3.2T)', unit: '본', qty: 3, price: 84000 },
+          { id: 'ei2', cat: '노무비', item: '철공(특수용접)', unit: '인', qty: 2, price: 248000 },
+          { id: 'ei3', cat: '경비', item: '신호수 및 교통통제차량', unit: '대·일', qty: 1, price: 380000 }
+        ],
+        estimateMemo: '도로시설물 긴급 복구 및 교통안전 통제 포함',
+        claimMemo: ''
       };
     }
 
@@ -230,6 +253,19 @@
       noticesTab: 'all',
       accountsSearch: '',
       homeFilter: { kind: '전체', period: '전체', showExtraAnalysis: false },
+      activeCaseId: null,
+      wizardStep: 1,
+      newCaseForm: {
+        insurerCaseNo: '', insurerPhone: '010-4821-3309',
+        openSec1: false, openSec2: false, openSec3: false, openSec4: false,
+        insType: '자동차 대물', damageType: '3종 · 자동차 사고', cause: '차량 충돌',
+        accidentDate: '2026-11-20', insurerManager: '김민수', deductible: '', guaranteePct: '100',
+        adjCorp: '', adjManager: '',
+        facilityTitle: '', selectedFacilities: ['가드레일'], address: '', detailAddress: '', plate: '',
+        adminOrg: '', adminPhone: '',
+        victimType: '개인', victimName: '', victimPhone: '', insuredName: '', insuredPhone: '',
+        accidentDesc: '', prepareReview: false, files: []
+      },
       // 핵심 데이터
       cases: [
         {
@@ -343,6 +379,40 @@
     // =========================================================================
     // 2. 유틸리티 함수 (포맷, 토스트, 모달)
     // =========================================================================
+    function ensureCaseDetails(c) {
+      if (!c) return null;
+      if (!c.photos) c.photos = { before: [], during: [], after: [], docs: [] };
+      if (!c.estimateItems) {
+        c.estimateItems = [
+          { id: 'ei1', cat: '재료비', item: '가드레일 보 (W형 3.2T)', unit: '본', qty: 4, price: 84000 },
+          { id: 'ei2', cat: '노무비', item: '철공(특수용접)', unit: '인', qty: 3, price: 248000 },
+          { id: 'ei3', cat: '경비', item: '신호수 및 교통통제차량', unit: '대·일', qty: 2, price: 380000 }
+        ];
+      }
+      if (c.reportDesc === undefined) c.reportDesc = c.title + ' 현장 파손 확인 및 안전조치';
+      if (c.reportPlan === undefined) c.reportPlan = '표준품셈 기준 자재 교체 및 마감 복구';
+      if (c.estimateMemo === undefined) c.estimateMemo = c.title + ' 복구 공사';
+      if (c.claimMemo === undefined) c.claimMemo = '';
+      if (c.completedDate === undefined) c.completedDate = '';
+      if (c.workDone === undefined) c.workDone = (c.stage === '04' || c.stage === 'done');
+      return c;
+    }
+
+    function calcEstimateTotals(items, overheadRate = 0.05, profitRate = 0.10) {
+      const mat = items.filter(i => i.cat === '재료비').reduce((s, i) => s + (Number(i.qty) * Number(i.price)), 0);
+      const lab = items.filter(i => i.cat === '노무비').reduce((s, i) => s + (Number(i.qty) * Number(i.price)), 0);
+      const exp = items.filter(i => i.cat === '경비').reduce((s, i) => s + (Number(i.qty) * Number(i.price)), 0);
+      const direct = mat + lab + exp;
+      const overhead = Math.round(direct * overheadRate);
+      const profit = Math.round((direct + overhead) * profitRate);
+      const rawSupply = direct + overhead + profit;
+      const supply = Math.floor(rawSupply / 100) * 100;
+      const rounding = supply - rawSupply;
+      const vat = Math.round(supply * 0.1);
+      const total = supply + vat;
+      return { mat, lab, exp, direct, overhead, profit, rounding, supply, vat, total };
+    }
+
     function won(n) {
       return Number(n || 0).toLocaleString('ko-KR') + '원';
     }
@@ -471,7 +541,12 @@
         acc_partner: '복구업체 계정',
         acc_org: '보험사·손해사정 계정',
         settings: '내 정보·알림 설정',
-        notices: '공지사항'
+        notices: '공지사항',
+        new_case: '복구의뢰 접수',
+        new_case_wizard: '접수 내용 보완',
+        claim_detail: '청구서 상세',
+        report_edit: '현장 보고서',
+        estimate_edit: '견적·업체 청구 작성'
       };
       return map[state.route] || '대시보드';
     }
@@ -696,7 +771,7 @@
             <h2 class="text-xl font-bold text-slate-900">의뢰 진행확인</h2>
             <p class="text-sm text-slate-500 mt-0.5">접수된 피해복구 의뢰의 진행 상태와 할 일을 한눈에 확인합니다.</p>
           </div>
-          <button type="button" onclick="openNewRequestModal()" class="px-4 py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-sm font-semibold flex items-center gap-1.5 self-start cursor-pointer shadow-xs">
+          <button type="button" onclick="openNewCasePage()" class="px-4 py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-sm font-semibold flex items-center gap-1.5 self-start cursor-pointer shadow-xs">
             <i data-lucide="plus" class="w-4 h-4"></i>
             <span>복구의뢰 접수</span>
           </button>
@@ -751,7 +826,7 @@
                     <h3 class="text-base font-bold text-slate-900">${escapeHtml(c.title)}</h3>
                     <p class="text-xs text-slate-500">${escapeHtml(c.address)} · ${escapeHtml(c.facility)} · ${escapeHtml(c.insurerGuide)}</p>
                   </div>
-                  <button type="button" onclick="openInsurerCaseAction('${c.id}')"
+                  <button type="button" onclick="openInsurerCasePage('${c.id}')"
                     class="px-4 py-2 rounded-xl text-xs font-semibold shrink-0 cursor-pointer ${c.insurerTask === 'todo' ? 'bg-blue-700 text-white hover:bg-blue-800' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}">
                     ${escapeHtml(c.insurerAction)}
                   </button>
@@ -845,7 +920,7 @@
                     </div>
                   </td>
                   <td class="px-5 py-4 text-right">
-                    <button type="button" onclick="openClaimDetailModal('${c.id}')" class="px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-semibold cursor-pointer">
+                    <button type="button" onclick="openClaimDetailPage('${c.id}')" class="px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-semibold cursor-pointer">
                       청구서 보기
                     </button>
                   </td>
@@ -885,7 +960,7 @@
             <h2 class="text-xl font-bold text-slate-900">대흥이엔씨 홈 대시보드</h2>
             <p class="text-sm text-slate-500 mt-0.5">전체 피해현장 진행 현황과 청구·수령·지급 금액 흐름을 통합 관리합니다.</p>
           </div>
-          <button type="button" onclick="openNewRequestModal()" class="px-4 py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-sm font-semibold flex items-center gap-1.5 self-start cursor-pointer">
+          <button type="button" onclick="openNewCasePage()" class="px-4 py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-sm font-semibold flex items-center gap-1.5 self-start cursor-pointer">
             <i data-lucide="plus" class="w-4 h-4"></i>
             <span>피해현장 추가</span>
           </button>
@@ -1002,7 +1077,7 @@
                   <div class="text-sm font-semibold text-slate-900 mt-0.5">${escapeHtml(c.title)}</div>
                   <div class="text-xs text-slate-400">${escapeHtml(c.address)}</div>
                 </div>
-                <button type="button" onclick="openAdminCaseEditModal('${c.id}')" class="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-100 self-start sm:self-center cursor-pointer">
+                <button type="button" onclick="openReportPage('${c.id}')" class="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-100 self-start sm:self-center cursor-pointer">
                   현장 보고 수정
                 </button>
               </div>
@@ -1062,7 +1137,7 @@
             <h2 class="text-xl font-bold text-slate-900">피해현장·업체 배정</h2>
             <p class="text-sm text-slate-500 mt-0.5">전체 13단계 복구 공정과 복구업체 배정 상태를 관리합니다.</p>
           </div>
-          <button type="button" onclick="openNewRequestModal()" class="px-4 py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-sm font-semibold flex items-center gap-1.5 self-start cursor-pointer">
+          <button type="button" onclick="openNewCasePage()" class="px-4 py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-sm font-semibold flex items-center gap-1.5 self-start cursor-pointer">
             <i data-lucide="plus" class="w-4 h-4"></i>
             <span>피해현장 추가</span>
           </button>
@@ -1138,7 +1213,7 @@
                     ${c.overdue && c.stage !== 'done' ? `<span class="inline-block mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-700">예정일 지남</span>` : ''}
                   </td>
                   <td class="px-4 py-3.5 text-right">
-                    <button type="button" onclick="openAdminCaseEditModal('${c.id}')" class="px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-semibold cursor-pointer">
+                    <button type="button" onclick="openReportPage('${c.id}')" class="px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-semibold cursor-pointer">
                       현장 보고 수정 →
                     </button>
                   </td>
@@ -1205,7 +1280,7 @@
                       </div>
                     </td>
                     <td class="px-4 py-3.5 text-right">
-                      <button type="button" onclick="openAdminClaimWriteModal('${c.id}')" class="px-3 py-1.5 rounded-lg bg-blue-700 text-white hover:bg-blue-800 text-xs font-semibold cursor-pointer">
+                      <button type="button" onclick="openClaimDetailPage('${c.id}')" class="px-3 py-1.5 rounded-lg bg-blue-700 text-white hover:bg-blue-800 text-xs font-semibold cursor-pointer">
                         ${c.claimStage === 'need_write' ? '청구서 작성' : '청구서 수정'}
                       </button>
                     </td>
@@ -1627,7 +1702,7 @@
                     <h3 class="text-base font-bold text-slate-900">${escapeHtml(c.title)}</h3>
                     <p class="text-xs text-slate-500 mt-0.5">${escapeHtml(c.address)} · 복구 예정 ${escapeHtml(c.dueDate)}</p>
                   </div>
-                  <button type="button" onclick="openPartnerActionModal('${c.id}')" class="px-4 py-2 rounded-xl text-xs font-semibold shrink-0 cursor-pointer ${isMyTurn ? 'bg-blue-700 text-white hover:bg-blue-800' : 'bg-slate-100 text-slate-700'}">
+                  <button type="button" onclick="openPartnerFlowPage('${c.id}')" class="px-4 py-2 rounded-xl text-xs font-semibold shrink-0 cursor-pointer ${isMyTurn ? 'bg-blue-700 text-white hover:bg-blue-800' : 'bg-slate-100 text-slate-700'}">
                     ${actionLabel}
                   </button>
                 </div>
@@ -2096,6 +2171,707 @@
     // =========================================================================
     // 11. 차트 초기화 및 전체 렌더링
     // =========================================================================
+    // =========================================================================
+    // 10-B. 세부 업무 페이지 (복구의뢰 접수, 4단계 마법사, 청구서 상세, 현장 보고서, 견적서)
+    // =========================================================================
+    function openNewCasePage() {
+      state.newCaseForm = {
+        insurerCaseNo: '2026-' + Math.floor(10000 + Math.random() * 89999),
+        insurerPhone: state.user?.phone || '010-4821-3309',
+        openSec1: false, openSec2: true, openSec3: false, openSec4: false,
+        insType: '자동차 대물', damageType: '3종 · 자동차 사고', cause: '차량 충돌',
+        accidentDate: '2026-11-20', insurerManager: state.user?.name || '김민수', deductible: '', guaranteePct: '100',
+        adjCorp: '', adjManager: '',
+        facilityTitle: '', selectedFacilities: ['가드레일'], address: '', detailAddress: '', plate: '',
+        adminOrg: '', adminPhone: '',
+        victimType: '개인', victimName: '', victimPhone: '', insuredName: '', insuredPhone: '',
+        accidentDesc: '', prepareReview: false, files: []
+      };
+      navigate('new_case');
+    }
+
+    function openInsurerCasePage(caseId) {
+      const c = state.cases.find(x => x.id === caseId);
+      if (!c) return;
+      if (c.insurerAction === '청구 서류 확인' || c.insurerAction === '청구서 보기') {
+        openClaimDetailPage(caseId);
+        return;
+      }
+      if (c.insurerAction === '이어서 적기') {
+        state.activeCaseId = caseId;
+        state.wizardStep = 1;
+        navigate('new_case_wizard');
+        return;
+      }
+      openInsurerCaseAction(caseId);
+    }
+
+    function openClaimDetailPage(caseId) {
+      const c = ensureCaseDetails(state.cases.find(x => x.id === caseId));
+      if (!c) return;
+      if (state.user.role === 'insurer' && c.claimReadStep < 2) {
+        c.claimReadStep = 2;
+        syncCaseToDb(c);
+      }
+      state.activeCaseId = caseId;
+      navigate('claim_detail');
+    }
+
+    function openReportPage(caseId) {
+      ensureCaseDetails(state.cases.find(x => x.id === caseId));
+      state.activeCaseId = caseId;
+      navigate('report_edit');
+    }
+
+    function openEstimatePage(caseId) {
+      ensureCaseDetails(state.cases.find(x => x.id === caseId));
+      state.activeCaseId = caseId;
+      navigate('estimate_edit');
+    }
+
+    function openPartnerFlowPage(caseId) {
+      const c = ensureCaseDetails(state.cases.find(x => x.id === caseId));
+      if (!c) return;
+      if (c.partnerStep6 === 1) {
+        openPartnerActionModal(caseId);
+      } else {
+        openReportPage(caseId);
+      }
+    }
+
+    function handleNewCaseFiles(input) {
+      if (!input.files) return;
+      Array.from(input.files).forEach(file => {
+        const reader = new FileReader();
+        reader.onload = e => {
+          state.newCaseForm.files.push({ name: file.name, size: Math.round(file.size / 1024) + 'KB', url: e.target.result });
+          render();
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function toggleFacilityChip(fac) {
+      const arr = state.newCaseForm.selectedFacilities;
+      const idx = arr.indexOf(fac);
+      if (idx >= 0) arr.splice(idx, 1); else arr.push(fac);
+      render();
+    }
+
+    function submitFullNewCase(isDraft = false) {
+      const f = state.newCaseForm;
+      const caseNo = document.getElementById('nc-no')?.value.trim() || f.insurerCaseNo;
+      const phone = document.getElementById('nc-phone')?.value.trim() || f.insurerPhone;
+      if (!caseNo || !phone) {
+        showToast('보험사 접수번호와 담당자 전화번호를 입력해 주세요.', 'error');
+        return;
+      }
+      const facTitle = document.getElementById('nc-title')?.value.trim() || f.facilityTitle || ((f.selectedFacilities[0] || '도로시설물') + ' 파손 복구');
+      const addr = document.getElementById('nc-addr')?.value.trim() || f.address || '위치 추후 보완';
+      const plate = document.getElementById('nc-plate')?.value.trim() || f.plate || '미상';
+      const desc = document.getElementById('nc-desc')?.value.trim() || f.accidentDesc || '상세 내용 추후 보완 예정';
+      const kind = (document.getElementById('nc-damage')?.value || f.damageType).includes('1종') ? '1종' : '3종';
+      const newId = 'DH-' + caseNo;
+      const newCase = ensureCaseDetails({
+        id: newId, date: '2026-11-20', elapsedDays: 0, kind,
+        facility: f.selectedFacilities[0] || '가드레일',
+        title: facTitle, address: addr, plate,
+        insurerOrg: state.user.org || '버스공제조합',
+        partnerOrg: '한빛복구', partnerManager: '미지정',
+        stage: '01', step13: 1, partnerStep6: 1, partnerStatus: '담당자 지정 · 내 차례',
+        insurerTask: 'todo', insurerAction: '이어서 적기',
+        insurerGuide: isDraft ? '임시 저장 상태입니다. 나머지 내용을 채워주세요.' : '접수됐습니다. 나머지 상세 내용을 보완할 수 있습니다.',
+        dueDate: '2026-11-30', overdue: false,
+        partnerClaimAmt: 0, insurerClaimAmt: 0, confirmedAmt: 0, receivedAmt: 0, feeRate: 0.12, paidAmt: 0,
+        claimStage: 'none', claimReadStep: 0, paidStatus: '미지급',
+        insurerCaseNo: caseNo, insurerPhone: phone, accidentDesc: desc,
+        photos: { before: [...f.files], during: [], after: [], docs: [...f.files] }
+      });
+      state.cases.unshift(newCase);
+      syncCaseToDb(newCase);
+      state.activeCaseId = newId;
+      state.wizardStep = 1;
+      showToast(isDraft ? '임시 저장되었습니다.' : '복구의뢰가 접수되었습니다!');
+      navigate('new_case_wizard');
+    }
+
+    function renderNewCasePage() {
+      const f = state.newCaseForm;
+      return `
+        <div class="flex items-center justify-between">
+          <div>
+            <h2 class="text-xl font-bold text-slate-900">복구의뢰 접수</h2>
+            <p class="text-sm text-slate-500 mt-0.5">필수 2개 항목만 입력해도 바로 접수되며, 상세 정보는 접수 후 이어서 적을 수 있습니다.</p>
+          </div>
+          <button type="button" onclick="navigate('cases')" class="px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer">목록으로</button>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-bold text-slate-900">1. 꼭 적을 것 2칸 (필수)</h3>
+            <span class="px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 text-[11px] font-semibold">필수 입력</span>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">보험사 접수(사고)번호 *</label>
+              <input id="nc-no" type="text" value="${escapeHtml(f.insurerCaseNo)}" oninput="state.newCaseForm.insurerCaseNo=this.value" placeholder="예: 2026-15853" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm" />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">담당자 전화번호 *</label>
+              <input id="nc-phone" type="text" value="${escapeHtml(f.insurerPhone)}" oninput="state.newCaseForm.insurerPhone=this.value" placeholder="010-0000-0000" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm" />
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-slate-200 p-5 space-y-3">
+          <div class="flex items-center justify-between">
+            <div>
+              <h3 class="text-sm font-bold text-slate-900">2. 사진·서류 첨부 (선택)</h3>
+              <p class="text-xs text-slate-500">파일당 최대 50MB, 여러 파일을 선택해 추가할 수 있습니다.</p>
+            </div>
+            <label class="px-3 py-2 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-semibold cursor-pointer">
+              + 파일 넣기
+              <input type="file" multiple accept="image/*,.pdf" class="hidden" onchange="handleNewCaseFiles(this)" />
+            </label>
+          </div>
+          ${f.files.length > 0 ? `
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
+              ${f.files.map((fl, i) => `
+                <div class="p-2 rounded-xl border border-slate-200 bg-slate-50 text-xs relative">
+                  <img src="${fl.url}" alt="" class="w-full h-24 object-cover rounded-lg mb-1.5 bg-slate-200" />
+                  <div class="truncate font-medium text-slate-700">${escapeHtml(fl.name)}</div>
+                  <button type="button" onclick="state.newCaseForm.files.splice(${i},1); render();" class="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-slate-900/70 text-white text-[11px] cursor-pointer">×</button>
+                </div>
+              `).join('')}
+            </div>
+          ` : '<div class="p-4 rounded-xl border border-dashed border-slate-200 text-center text-xs text-slate-400">첨부된 파일이 없습니다.</div>'}
+        </div>
+
+        <!-- 접이식 선택 섹션 4개 -->
+        <div class="space-y-3">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4">
+            <button type="button" onclick="state.newCaseForm.openSec1=!state.newCaseForm.openSec1; render();" class="w-full flex items-center justify-between text-sm font-bold text-slate-800 cursor-pointer">
+              <span>${f.openSec1 ? '▼' : '▶'} 더 적을 수 있는 내용 ① 보험 구분 · 면책금 · 손해사정</span>
+              <span class="text-xs text-slate-400 font-normal">선택 입력</span>
+            </button>
+            ${f.openSec1 ? `
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4 pt-4 border-t border-slate-100 text-xs">
+                <div><label class="block font-semibold mb-1">보험사·공제조합</label><input type="text" readonly value="${escapeHtml(state.user.org)}" class="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50" /></div>
+                <div><label class="block font-semibold mb-1">보험 구분</label><select class="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white"><option>자동차 대물</option><option>영업배상책임</option></select></div>
+                <div><label class="block font-semibold mb-1">손해 구분</label><select id="nc-damage" class="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white"><option>3종 · 자동차 사고</option><option>1종 · 일반 시설물</option></select></div>
+                <div><label class="block font-semibold mb-1">피해 원인</label><input type="text" value="${escapeHtml(f.cause)}" class="w-full px-3 py-2 rounded-xl border border-slate-200" /></div>
+                <div><label class="block font-semibold mb-1">사고일</label><input type="date" value="${escapeHtml(f.accidentDate)}" class="w-full px-3 py-2 rounded-xl border border-slate-200" /></div>
+                <div><label class="block font-semibold mb-1">면책금 (원)</label><input type="number" placeholder="0" class="w-full px-3 py-2 rounded-xl border border-slate-200" /></div>
+              </div>
+            ` : ''}
+          </div>
+
+          <div class="bg-white rounded-2xl border border-slate-200 p-4">
+            <button type="button" onclick="state.newCaseForm.openSec2=!state.newCaseForm.openSec2; render();" class="w-full flex items-center justify-between text-sm font-bold text-slate-800 cursor-pointer">
+              <span>${f.openSec2 ? '▼' : '▶'} 더 적을 수 있는 내용 ② 피해 위치 · 피해시설 · 차량번호</span>
+              <span class="text-xs text-slate-400 font-normal">선택 입력</span>
+            </button>
+            ${f.openSec2 ? `
+              <div class="space-y-3 mt-4 pt-4 border-t border-slate-100 text-xs">
+                <div>
+                  <label class="block font-semibold mb-1.5">피해 시설물 분류 (복수 선택)</label>
+                  <div class="flex flex-wrap gap-1.5">
+                    ${['가드레일','방음벽','신호등·지주','가로등','도로표지판','중앙분리대'].map(fac => `
+                      <button type="button" onclick="toggleFacilityChip('${fac}')" class="px-2.5 py-1 rounded-full font-semibold cursor-pointer ${f.selectedFacilities.includes(fac)?'bg-blue-700 text-white':'bg-slate-100 text-slate-600'}">${fac}</button>
+                    `).join('')}
+                  </div>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div><label class="block font-semibold mb-1">시설물 명칭·피해 내용</label><input id="nc-title" type="text" value="${escapeHtml(f.facilityTitle)}" oninput="state.newCaseForm.facilityTitle=this.value" placeholder="예: 강변북로 가드레일 10m 파손" class="w-full px-3 py-2 rounded-xl border border-slate-200" /></div>
+                  <div><label class="block font-semibold mb-1">사고 차량번호</label><input id="nc-plate" type="text" value="${escapeHtml(f.plate)}" oninput="state.newCaseForm.plate=this.value" placeholder="예: 서울74사 8821" class="w-full px-3 py-2 rounded-xl border border-slate-200" /></div>
+                  <div class="sm:col-span-2">
+                    <label class="block font-semibold mb-1">피해 위치 (주소 또는 위치 설명)</label>
+                    <div class="flex gap-2">
+                      <input id="nc-addr" type="text" value="${escapeHtml(f.address)}" oninput="state.newCaseForm.address=this.value" placeholder="예: 서울 광진구 자양동 221-4" class="flex-1 px-3 py-2 rounded-xl border border-slate-200" />
+                      <button type="button" onclick="state.newCaseForm.address='서울 강남구 테헤란로 152 (현재 위치)'; render();" class="px-3 py-2 rounded-xl border border-slate-200 font-semibold hover:bg-slate-50 cursor-pointer shrink-0">현재 위치로 지정</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ` : ''}
+          </div>
+
+          <div class="bg-white rounded-2xl border border-slate-200 p-4">
+            <button type="button" onclick="state.newCaseForm.openSec3=!state.newCaseForm.openSec3; render();" class="w-full flex items-center justify-between text-sm font-bold text-slate-800 cursor-pointer">
+              <span>${f.openSec3 ? '▼' : '▶'} 더 적을 수 있는 내용 ③ 피해자 · 보험가입자(조합원)</span>
+              <span class="text-xs text-slate-400 font-normal">선택 입력</span>
+            </button>
+            ${f.openSec3 ? `
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4 pt-4 border-t border-slate-100 text-xs">
+                <div><label class="block font-semibold mb-1">피해자 구분</label><select class="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white"><option>개인</option><option>공공기관·지자체</option><option>법인</option></select></div>
+                <div><label class="block font-semibold mb-1">피해자 성명·업체명</label><input type="text" placeholder="예: 서울시설공단" class="w-full px-3 py-2 rounded-xl border border-slate-200" /></div>
+                <div><label class="block font-semibold mb-1">피해자 연락처</label><input type="text" placeholder="02-0000-0000" class="w-full px-3 py-2 rounded-xl border border-slate-200" /></div>
+              </div>
+            ` : ''}
+          </div>
+
+          <div class="bg-white rounded-2xl border border-slate-200 p-4">
+            <button type="button" onclick="state.newCaseForm.openSec4=!state.newCaseForm.openSec4; render();" class="w-full flex items-center justify-between text-sm font-bold text-slate-800 cursor-pointer">
+              <span>${f.openSec4 ? '▼' : '▶'} 더 적을 수 있는 내용 ④ 사고 경위 · 요청 내용</span>
+              <span class="text-xs text-slate-400 font-normal">선택 입력</span>
+            </button>
+            ${f.openSec4 ? `
+              <div class="space-y-3 mt-4 pt-4 border-t border-slate-100 text-xs">
+                <textarea id="nc-desc" rows="3" oninput="state.newCaseForm.accidentDesc=this.value" placeholder="사고 경위 및 복구 요청 내용을 입력하세요." class="w-full px-3 py-2 rounded-xl border border-slate-200">${escapeHtml(f.accidentDesc)}</textarea>
+                <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" class="rounded text-blue-600" /><span>손해사정 검토 자료를 함께 준비</span></label>
+              </div>
+            ` : ''}
+          </div>
+        </div>
+
+        <div class="flex flex-wrap justify-end gap-2 pt-2">
+          <button type="button" onclick="navigate('cases')" class="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 cursor-pointer">취소</button>
+          <button type="button" onclick="submitFullNewCase(true)" class="px-4 py-2.5 rounded-xl border border-blue-200 bg-blue-50 text-blue-700 text-xs font-semibold cursor-pointer">임시 저장</button>
+          <button type="button" onclick="submitFullNewCase(false)" class="px-5 py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-semibold cursor-pointer">복구의뢰 제출</button>
+        </div>
+      `;
+    }
+
+    function renderNewCaseWizardPage() {
+      const c = ensureCaseDetails(state.cases.find(x => x.id === state.activeCaseId));
+      if (!c) { navigate('cases'); return ''; }
+      const stp = state.wizardStep;
+      const filled = [c.insurerCaseNo, c.insurerPhone, c.title, c.address !== '위치 추후 보완' ? c.address : '', c.victimName, c.accidentDesc].filter(Boolean).length;
+
+      return `
+        <div class="bg-emerald-50 border border-emerald-200 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <div class="text-xs font-bold text-emerald-700">접수번호 ${escapeHtml(c.id)}</div>
+            <h2 class="text-lg font-bold text-emerald-950 mt-0.5">접수됐습니다. 나머지 내용을 적어 주세요</h2>
+            <p class="text-xs text-emerald-800 mt-0.5">6칸 중 <strong>${filled}칸</strong>을 적었습니다. (진행 단계 ${stp} / 4)</p>
+          </div>
+          <button type="button" onclick="navigate('cases')" class="px-3 py-2 rounded-xl bg-white border border-emerald-200 text-xs font-semibold text-emerald-800 cursor-pointer self-start">여기까지만 저장하고 나가기</button>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-slate-200 p-6 space-y-5">
+          <div class="flex items-center gap-2">
+            ${[1,2,3,4].map(n => `
+              <button type="button" onclick="state.wizardStep=${n}; render();" class="flex-1 py-2 rounded-xl text-xs font-bold cursor-pointer ${stp===n?'bg-blue-700 text-white':'bg-slate-100 text-slate-600'}">${n} / 4 단계</button>
+            `).join('')}
+          </div>
+
+          ${stp === 1 ? `
+            <div class="space-y-3">
+              <h3 class="text-base font-bold text-slate-900">1 / 4 단계: 무엇이 파손됐나요?</h3>
+              <div><label class="block text-xs font-semibold mb-1">시설물 분류</label><input id="wz-fac" type="text" value="${escapeHtml(c.facility)}" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" /></div>
+              <div><label class="block text-xs font-semibold mb-1">시설물 명칭·피해 내용</label><input id="wz-title" type="text" value="${escapeHtml(c.title)}" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" /></div>
+            </div>
+          ` : stp === 2 ? `
+            <div class="space-y-3">
+              <h3 class="text-base font-bold text-slate-900">2 / 4 단계: 어디인가요?</h3>
+              <div><label class="block text-xs font-semibold mb-1">피해 위치 (주소)</label><input id="wz-addr" type="text" value="${escapeHtml(c.address)}" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" /></div>
+              <div><label class="block text-xs font-semibold mb-1">가해 차량번호</label><input id="wz-plate" type="text" value="${escapeHtml(c.plate)}" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" /></div>
+            </div>
+          ` : stp === 3 ? `
+            <div class="space-y-3">
+              <h3 class="text-base font-bold text-slate-900">3 / 4 단계: 피해자는 누구인가요?</h3>
+              <div><label class="block text-xs font-semibold mb-1">피해자 성명·업체명</label><input id="wz-vname" type="text" value="${escapeHtml(c.victimName || '')}" placeholder="예: 서울시설공단" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" /></div>
+              <div><label class="block text-xs font-semibold mb-1">피해자 연락처</label><input id="wz-vphone" type="text" value="${escapeHtml(c.victimPhone || '')}" placeholder="02-0000-0000" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" /></div>
+            </div>
+          ` : `
+            <div class="space-y-3">
+              <h3 class="text-base font-bold text-slate-900">4 / 4 단계: 더 알려 주실 내용이 있나요?</h3>
+              <textarea id="wz-desc" rows="4" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm">${escapeHtml(c.accidentDesc || '')}</textarea>
+            </div>
+          `}
+
+          <div class="flex justify-between pt-3 border-t border-slate-100">
+            <button type="button" onclick="navigate('cases')" class="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 cursor-pointer">나중에 적기</button>
+            <div class="flex gap-2">
+              <button type="button" onclick="saveWizardStep(${stp}, ${stp < 4 ? 'true' : 'false'})" class="px-5 py-2 rounded-xl bg-blue-700 text-white text-xs font-semibold cursor-pointer">${stp < 4 ? '저장 후 다음 →' : '보완 완료 저장'}</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function saveWizardStep(stp, goNext) {
+      const c = state.cases.find(x => x.id === state.activeCaseId);
+      if (!c) return;
+      if (stp === 1) { c.facility = document.getElementById('wz-fac').value; c.title = document.getElementById('wz-title').value; }
+      if (stp === 2) { c.address = document.getElementById('wz-addr').value; c.plate = document.getElementById('wz-plate').value; }
+      if (stp === 3) { c.victimName = document.getElementById('wz-vname').value; c.victimPhone = document.getElementById('wz-vphone').value; }
+      if (stp === 4) {
+        c.accidentDesc = document.getElementById('wz-desc').value;
+        c.insurerTask = 'progress';
+        c.insurerAction = '상세 보기';
+        c.insurerGuide = '상세 접수 정보 입력이 완료되어 복구업체 배정 대기 중입니다.';
+      }
+      syncCaseToDb(c);
+      showToast('저장되었습니다.');
+      if (goNext) { state.wizardStep = stp + 1; render(); } else { navigate('cases'); }
+    }
+
+    function renderClaimDetailPage() {
+      const c = ensureCaseDetails(state.cases.find(x => x.id === state.activeCaseId));
+      if (!c) { navigate('claims'); return ''; }
+      const isDaehung = state.user.role === 'daehung';
+      const totals = calcEstimateTotals(c.estimateItems, isDaehung ? 0.06 : 0.05, 0.10);
+      const displayAmt = c.insurerClaimAmt || totals.total;
+      const timelineStep = c.claimReadStep >= 3 ? 5 : c.claimReadStep === 2 ? 4 : c.claimStage === 'wait_read' ? 3 : c.claimStage === 'need_write' ? 2 : 1;
+
+      return `
+        <div class="flex items-center justify-between">
+          <div>
+            <h2 class="text-xl font-bold text-slate-900">${isDaehung ? '최종견적 검토 · 보험사 청구 작성' : '피해복구 비용 청구서'}</h2>
+            <p class="text-xs text-slate-500 mt-0.5">${escapeHtml(c.id)} · ${escapeHtml(c.title)}</p>
+          </div>
+          <button type="button" onclick="navigate('claims')" class="px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold cursor-pointer">목록으로</button>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          <!-- 좌측 청구서 본문 -->
+          <div class="lg:col-span-2 space-y-4">
+            <div class="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
+              <div class="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                <div class="text-sm font-bold text-slate-900">기본 요약</div>
+                <div class="text-lg font-bold text-blue-700">총 청구 금액: ${won(displayAmt)}</div>
+              </div>
+              <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+                <div><span class="text-slate-400">접수번호</span><div class="font-semibold mt-0.5">${escapeHtml(c.id)}</div></div>
+                <div><span class="text-slate-400">수신 기관</span><div class="font-semibold mt-0.5">${escapeHtml(c.insurerOrg)}</div></div>
+                <div><span class="text-slate-400">복구업체</span><div class="font-semibold mt-0.5">${escapeHtml(c.partnerOrg)}</div></div>
+                <div class="sm:col-span-2"><span class="text-slate-400">피해 위치</span><div class="font-semibold mt-0.5">${escapeHtml(c.address)}</div></div>
+                <div><span class="text-slate-400">차량번호</span><div class="font-semibold mt-0.5">${escapeHtml(c.plate)}</div></div>
+              </div>
+            </div>
+
+            <div class="bg-white rounded-2xl border border-slate-200 overflow-x-auto">
+              <div class="px-5 py-3.5 border-b border-slate-100 text-sm font-bold text-slate-900">비목별 상세 내역</div>
+              <table class="w-full text-left text-xs">
+                <thead class="bg-slate-50 border-b border-slate-200 text-slate-500">
+                  <tr><th class="px-4 py-2.5">비목</th><th class="px-4 py-2.5">공정·품목</th><th class="px-4 py-2.5">수량 × 단가</th><th class="px-4 py-2.5 text-right">금액</th></tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                  ${c.estimateItems.map(it => `
+                    <tr>
+                      <td class="px-4 py-2.5 font-semibold">${escapeHtml(it.cat)}</td>
+                      <td class="px-4 py-2.5">${escapeHtml(it.item)}</td>
+                      <td class="px-4 py-2.5">${it.qty}${escapeHtml(it.unit)} × ${won(it.price)}</td>
+                      <td class="px-4 py-2.5 text-right font-bold">${won(it.qty * it.price)}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+              <div class="p-4 bg-slate-50 border-t border-slate-200 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                <div><span class="text-slate-500">재료비</span><div class="font-bold">${won(totals.mat)}</div></div>
+                <div><span class="text-slate-500">노무비</span><div class="font-bold">${won(totals.lab)}</div></div>
+                <div><span class="text-slate-500">경비</span><div class="font-bold">${won(totals.exp)}</div></div>
+                <div><span class="text-slate-500">일반관리비·이윤</span><div class="font-bold">${won(totals.overhead + totals.profit)}</div></div>
+                <div><span class="text-slate-500">공급가액</span><div class="font-bold">${won(totals.supply)}</div></div>
+                <div><span class="text-slate-500">부가세 (10%)</span><div class="font-bold">${won(totals.vat)}</div></div>
+                <div class="sm:col-span-2 text-right"><span class="text-slate-500">산출 합계</span><div class="text-base font-bold text-blue-700">${won(totals.total)}</div></div>
+              </div>
+            </div>
+
+            <div class="bg-white rounded-2xl border border-slate-200 p-5 space-y-3">
+              <div class="text-sm font-bold text-slate-900">현장 보고·증빙</div>
+              <p class="text-xs text-slate-600">${escapeHtml(c.reportDesc)}</p>
+              <div class="grid grid-cols-3 gap-2">
+                ${['before','during','after'].map(k => (c.photos[k]||[]).map(p => `<img src="${p.url}" class="w-full h-24 object-cover rounded-xl border border-slate-200" />`).join('')).join('') || '<div class="col-span-3 text-xs text-slate-400">첨부된 현장 사진은 보고서 메뉴에서 확인할 수 있습니다.</div>'}
+              </div>
+            </div>
+          </div>
+
+          <!-- 우측 타임라인 및 액션 패널 -->
+          <div class="space-y-4">
+            <div class="bg-white rounded-2xl border border-slate-200 p-5 space-y-3">
+              <div class="text-sm font-bold text-slate-900">청구 진행</div>
+              <div class="space-y-2 text-xs">
+                ${['1. 업체 청구 접수','2. 대흥이엔씨 검토','3. 청구서 공개','4. 기관 열람','5. 기관 내용 확인'].map((lbl, idx) => `
+                  <div class="flex items-center gap-2 ${timelineStep >= idx+1 ? 'text-emerald-700 font-semibold' : 'text-slate-400'}">
+                    <span class="w-2.5 h-2.5 rounded-full ${timelineStep >= idx+1 ? 'bg-emerald-500' : 'bg-slate-200'}"></span>
+                    <span>${lbl}</span>
+                  </div>
+                `).join('')}
+              </div>
+              <button type="button" onclick="window.print()" class="w-full py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer">서류 출력</button>
+            </div>
+
+            <div class="bg-white rounded-2xl border border-slate-200 p-5 space-y-3">
+              <div class="text-sm font-bold text-slate-900">${isDaehung ? '최종견적 검토 및 공개' : '기관 지급 업무'}</div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">검토 메모</label>
+                <textarea id="cl-memo" rows="3" placeholder="검토 메모를 입력하세요." class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs">${escapeHtml(c.claimMemo || '')}</textarea>
+              </div>
+              ${isDaehung ? `
+                <div>
+                  <label class="block text-xs font-semibold text-slate-600 mb-1">보험사 청구 확정액 (원)</label>
+                  <input id="cl-amt" type="number" value="${displayAmt}" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm font-bold" />
+                </div>
+                <button type="button" onclick="publishClaimByAdmin('${c.id}')" class="w-full py-2.5 rounded-xl bg-blue-700 text-white text-xs font-semibold hover:bg-blue-800 cursor-pointer">검토 완료 · 보험사 청구 공개</button>
+                <button type="button" onclick="rejectClaimByAdmin('${c.id}')" class="w-full py-2 rounded-xl border border-rose-200 text-rose-700 text-xs font-semibold hover:bg-rose-50 cursor-pointer">업체 청구 반려</button>
+              ` : `
+                <button type="button" onclick="confirmClaimRead('${c.id}')" class="w-full py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 cursor-pointer">청구 내용 확인 완료</button>
+                <button type="button" onclick="saveClaimMemoOnly('${c.id}')" class="w-full py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 cursor-pointer">검토 메모 저장</button>
+              `}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function publishClaimByAdmin(caseId) {
+      const c = state.cases.find(x => x.id === caseId);
+      if (!c) return;
+      c.insurerClaimAmt = Number(document.getElementById('cl-amt').value) || c.insurerClaimAmt;
+      c.claimMemo = document.getElementById('cl-memo').value;
+      c.claimStage = 'wait_read';
+      c.claimReadStep = 1;
+      c.stage = '03';
+      c.insurerTask = 'todo';
+      c.insurerAction = '청구 서류 확인';
+      syncCaseToDb(c);
+      showToast('보험사 청구서가 공개되었습니다.');
+      navigate('claims');
+    }
+
+    function rejectClaimByAdmin(caseId) {
+      const c = state.cases.find(x => x.id === caseId);
+      if (!c) return;
+      c.claimMemo = document.getElementById('cl-memo').value;
+      c.partnerStatus = '최초견적 제출 · 내 차례';
+      c.partnerStep6 = 2;
+      syncCaseToDb(c);
+      showToast('업체 청구가 반려되어 파트너사에 재요청되었습니다.', 'info');
+      navigate('claims');
+    }
+
+    function saveClaimMemoOnly(caseId) {
+      const c = state.cases.find(x => x.id === caseId);
+      if (c) { c.claimMemo = document.getElementById('cl-memo').value; syncCaseToDb(c); }
+      showToast('검토 메모가 저장되었습니다.');
+    }
+
+    function handleReportPhotoUpload(caseId, slot, input) {
+      const c = ensureCaseDetails(state.cases.find(x => x.id === caseId));
+      if (!c || !input.files) return;
+      Array.from(input.files).forEach(file => {
+        const reader = new FileReader();
+        reader.onload = e => {
+          c.photos[slot].push({ name: file.name, url: e.target.result });
+          render();
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function renderReportEditPage() {
+      const c = ensureCaseDetails(state.cases.find(x => x.id === state.activeCaseId));
+      if (!c) { navigate('cases'); return ''; }
+      const isDaehung = state.user.role === 'daehung';
+      const totalPhotos = (c.photos.before.length + c.photos.during.length + c.photos.after.length);
+
+      return `
+        <div class="flex items-center justify-between">
+          <div>
+            <h2 class="text-xl font-bold text-slate-900">현장 보고서 ${isDaehung ? '수정' : '작성'}</h2>
+            <p class="text-xs text-slate-500 mt-0.5">${escapeHtml(c.id)} · ${escapeHtml(c.title)}</p>
+          </div>
+          <button type="button" onclick="navigate('cases')" class="px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold cursor-pointer">목록으로</button>
+        </div>
+
+        ${isDaehung ? `
+          <div class="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-center justify-between text-xs text-amber-900">
+            <span><strong>지금은 복구업체 차례</strong> · 대흥이엔씨는 필요하면 대신 수정할 수 있어요.</span>
+            <button type="button" onclick="showToast('담당자(${escapeHtml(c.partnerManager)}) 연락처: 010-6315-8821', 'info')" class="px-3 py-1.5 rounded-lg bg-white border border-amber-300 font-semibold cursor-pointer">업체 담당자 연락처</button>
+          </div>
+        ` : ''}
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          <div class="lg:col-span-2 space-y-4">
+            <div class="bg-white rounded-2xl border border-slate-200 p-5 space-y-2">
+              <label class="text-sm font-bold text-slate-900">1. 피해 상황 설명</label>
+              <textarea id="rp-desc" rows="3" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm">${escapeHtml(c.reportDesc)}</textarea>
+            </div>
+
+            <div class="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
+              <div class="text-sm font-bold text-slate-900">2. 현장 사진 (작업 전 · 작업 중 · 작업 후)</div>
+              ${[
+                ['before', '작업 전 · 피해 상황'],
+                ['during', '작업 중 · 작업할 때'],
+                ['after', '작업 후 · 완료한 뒤']
+              ].map(([slot, label]) => `
+                <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+                  <div class="flex items-center justify-between">
+                    <span class="text-xs font-bold text-slate-700">${label} (${c.photos[slot].length}장)</span>
+                    <label class="px-2.5 py-1 rounded-lg bg-blue-600 text-white text-[11px] font-semibold cursor-pointer">
+                      + 사진 넣기
+                      <input type="file" multiple accept="image/*" class="hidden" onchange="handleReportPhotoUpload('${c.id}','${slot}',this)" />
+                    </label>
+                  </div>
+                  ${c.photos[slot].length > 0 ? `
+                    <div class="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                      ${c.photos[slot].map((p, i) => `
+                        <div class="relative rounded-lg overflow-hidden border border-slate-200 bg-white">
+                          <img src="${p.url}" class="w-full h-20 object-cover" />
+                          <button type="button" onclick="state.cases.find(x=>x.id==='${c.id}').photos['${slot}'].splice(${i},1); render();" class="absolute top-1 right-1 w-5 h-5 rounded-full bg-slate-900/75 text-white text-[10px] cursor-pointer">×</button>
+                        </div>
+                      `).join('')}
+                    </div>
+                  ` : '<div class="text-[11px] text-slate-400">등록된 사진이 없습니다.</div>'}
+                </div>
+              `).join('')}
+            </div>
+
+            <div class="bg-white rounded-2xl border border-slate-200 p-5 space-y-2">
+              <label class="text-sm font-bold text-slate-900">3. 복구 계획 (선택)</label>
+              <textarea id="rp-plan" rows="2" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm">${escapeHtml(c.reportPlan)}</textarea>
+            </div>
+
+            <div class="bg-white rounded-2xl border border-slate-200 p-5 space-y-3">
+              <div class="text-sm font-bold text-slate-900">4. 일정과 완료</div>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <div><label class="block font-semibold mb-1">복구 예정일</label><input id="rp-due" type="date" value="${escapeHtml(c.dueDate)}" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" /></div>
+                <div><label class="block font-semibold mb-1">현장 완료일</label><input id="rp-done-date" type="date" value="${escapeHtml(c.completedDate)}" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" /></div>
+              </div>
+              <label class="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
+                <input id="rp-done" type="checkbox" ${c.workDone ? 'checked' : ''} class="rounded text-blue-600" />
+                <span>현장 작업 완료 (완료 시 최종견적 제출 가능)</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="space-y-4">
+            <div class="bg-white rounded-2xl border border-slate-200 p-5 space-y-3">
+              <h3 class="text-sm font-bold text-slate-900">보고 체크리스트</h3>
+              <div class="space-y-2 text-xs text-slate-600">
+                <div class="flex justify-between"><span>복구업체 담당자</span><strong class="text-slate-900">${escapeHtml(c.partnerManager)}</strong></div>
+                <div class="flex justify-between"><span>등록된 현장 사진</span><strong class="text-blue-700">${totalPhotos}장</strong></div>
+                <div class="flex justify-between"><span>작업 완료 여부</span><strong>${c.workDone ? '완료' : '진행 중'}</strong></div>
+              </div>
+              <div class="pt-2 space-y-2">
+                <button type="button" onclick="saveReportAndGoEstimate('${c.id}', true)" class="w-full py-2.5 rounded-xl bg-blue-700 text-white text-xs font-semibold hover:bg-blue-800 cursor-pointer">
+                  ${isDaehung ? '저장 후 견적 화면으로' : '저장 후 최초견적 작성'}
+                </button>
+                <button type="button" onclick="saveReportAndGoEstimate('${c.id}', false)" class="w-full py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer">보고서 저장</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function saveReportAndGoEstimate(caseId, goEstimate) {
+      const c = state.cases.find(x => x.id === caseId);
+      if (!c) return;
+      c.reportDesc = document.getElementById('rp-desc').value;
+      c.reportPlan = document.getElementById('rp-plan').value;
+      c.dueDate = document.getElementById('rp-due').value;
+      c.completedDate = document.getElementById('rp-done-date').value;
+      c.workDone = document.getElementById('rp-done').checked;
+      syncCaseToDb(c);
+      showToast('현장 보고서가 저장되었습니다.');
+      if (goEstimate) openEstimatePage(caseId); else render();
+    }
+
+    function renderEstimateEditPage() {
+      const c = ensureCaseDetails(state.cases.find(x => x.id === state.activeCaseId));
+      if (!c) { navigate('cases'); return ''; }
+      const totals = calcEstimateTotals(c.estimateItems, 0.05, 0.10);
+
+      return `
+        <div class="flex items-center justify-between">
+          <div>
+            <h2 class="text-xl font-bold text-slate-900">견적·업체 청구 작성</h2>
+            <p class="text-xs text-slate-500 mt-0.5">${escapeHtml(c.id)} · ${escapeHtml(c.title)}</p>
+          </div>
+          <button type="button" onclick="navigate('cases')" class="px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold cursor-pointer">목록으로</button>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+          <div class="lg:col-span-2 space-y-4">
+            <div class="bg-white rounded-2xl border border-slate-200 p-5 space-y-3">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <h3 class="text-sm font-bold text-slate-900">공정별 견적 항목</h3>
+                <div class="flex gap-2">
+                  <select id="est-unit-pick" class="px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs bg-white">
+                    ${state.unitPrices.map(u => `<option value="${u.id}">[${u.cat}] ${escapeHtml(u.item)} (${won(u.price)})</option>`).join('')}
+                  </select>
+                  <button type="button" onclick="addEstimateFromUnit('${c.id}')" class="px-3 py-1.5 rounded-lg bg-blue-700 text-white text-xs font-semibold cursor-pointer">+ 단가표 추가</button>
+                  <button type="button" onclick="addBlankEstimateRow('${c.id}')" class="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold cursor-pointer">+ 직접 추가</button>
+                </div>
+              </div>
+
+              <div class="space-y-2">
+                ${c.estimateItems.map((it, idx) => `
+                  <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 grid grid-cols-12 gap-2 items-center text-xs">
+                    <select onchange="updateEstField('${c.id}',${idx},'cat',this.value)" class="col-span-3 sm:col-span-2 px-2 py-1.5 rounded-lg border border-slate-200 bg-white">
+                      ${['재료비','노무비','경비'].map(k => `<option ${it.cat===k?'selected':''}>${k}</option>`).join('')}
+                    </select>
+                    <input type="text" value="${escapeHtml(it.item)}" onchange="updateEstField('${c.id}',${idx},'item',this.value)" class="col-span-9 sm:col-span-4 px-2 py-1.5 rounded-lg border border-slate-200 bg-white font-semibold" />
+                    <input type="number" value="${it.qty}" min="1" onchange="updateEstField('${c.id}',${idx},'qty',Number(this.value))" class="col-span-4 sm:col-span-2 px-2 py-1.5 rounded-lg border border-slate-200 bg-white text-right" />
+                    <input type="number" value="${it.price}" step="1000" onchange="updateEstField('${c.id}',${idx},'price',Number(this.value))" class="col-span-6 sm:col-span-3 px-2 py-1.5 rounded-lg border border-slate-200 bg-white text-right" />
+                    <button type="button" onclick="state.cases.find(x=>x.id==='${c.id}').estimateItems.splice(${idx},1); render();" class="col-span-2 sm:col-span-1 text-rose-600 font-bold cursor-pointer text-center">×</button>
+                  </div>
+                `).join('')}
+              </div>
+
+              <div>
+                <label class="block text-xs font-semibold text-slate-700 mb-1">공사 개요·청구 설명</label>
+                <textarea id="est-memo" rows="2" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs">${escapeHtml(c.estimateMemo)}</textarea>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-2xl border border-slate-200 p-5 space-y-3 h-fit">
+            <h3 class="text-sm font-bold text-slate-900">금액 자동 산출</h3>
+            <div class="space-y-1.5 text-xs">
+              <div class="flex justify-between"><span class="text-slate-500">재료비</span><span>${won(totals.mat)}</span></div>
+              <div class="flex justify-between"><span class="text-slate-500">노무비</span><span>${won(totals.lab)}</span></div>
+              <div class="flex justify-between"><span class="text-slate-500">경비</span><span>${won(totals.exp)}</span></div>
+              <div class="flex justify-between pt-1 border-t border-slate-100"><span class="text-slate-500">일반관리비 (5%)</span><span>${won(totals.overhead)}</span></div>
+              <div class="flex justify-between"><span class="text-slate-500">기업이윤 (10%)</span><span>${won(totals.profit)}</span></div>
+              <div class="flex justify-between"><span class="text-slate-500">단수조정</span><span>${won(totals.rounding)}</span></div>
+              <div class="flex justify-between pt-1 border-t border-slate-100 font-semibold"><span>공급가액</span><span>${won(totals.supply)}</span></div>
+              <div class="flex justify-between"><span class="text-slate-500">부가세 (10%)</span><span>${won(totals.vat)}</span></div>
+              <div class="flex justify-between pt-2 border-t border-slate-200 text-sm font-bold text-blue-700"><span>합계</span><span>${won(totals.total)}</span></div>
+            </div>
+            <div class="pt-2 space-y-2">
+              <button type="button" onclick="submitEstimate('${c.id}', false)" class="w-full py-2.5 rounded-xl bg-blue-700 text-white text-xs font-semibold hover:bg-blue-800 cursor-pointer">최초견적 제출</button>
+              <button type="button" onclick="submitEstimate('${c.id}', true)" class="w-full py-2 rounded-xl bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 cursor-pointer">최종견적·업체 청구 제출</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function addEstimateFromUnit(caseId) {
+      const c = state.cases.find(x => x.id === caseId);
+      const u = state.unitPrices.find(x => x.id === document.getElementById('est-unit-pick').value);
+      if (c && u) { c.estimateItems.push({ id: 'ei' + Date.now(), cat: u.cat, item: u.item, unit: u.unit, qty: 1, price: u.price }); render(); }
+    }
+
+    function addBlankEstimateRow(caseId) {
+      const c = state.cases.find(x => x.id === caseId);
+      if (c) { c.estimateItems.push({ id: 'ei' + Date.now(), cat: '재료비', item: '신규 공정 항목', unit: '식', qty: 1, price: 100000 }); render(); }
+    }
+
+    function updateEstField(caseId, idx, field, val) {
+      const c = state.cases.find(x => x.id === caseId);
+      if (c && c.estimateItems[idx]) { c.estimateItems[idx][field] = val; render(); }
+    }
+
+    function submitEstimate(caseId, isFinal) {
+      const c = state.cases.find(x => x.id === caseId);
+      if (!c) return;
+      const totals = calcEstimateTotals(c.estimateItems, 0.05, 0.10);
+      c.estimateMemo = document.getElementById('est-memo').value;
+      c.partnerClaimAmt = totals.total;
+      c.partnerStep6 = isFinal ? 5 : 3;
+      c.partnerStatus = '대흥이엔씨 처리 중';
+      c.stage = isFinal ? '03' : '02';
+      c.claimStage = 'need_write';
+      syncCaseToDb(c);
+      showToast(isFinal ? '최종견적(업체 청구)이 제출되었습니다.' : '최초견적이 제출되었습니다.');
+      navigate('cases');
+    }
+
     function destroyCharts() {
       chartInstances.forEach(ch => ch.destroy());
       chartInstances = [];
@@ -2173,6 +2949,11 @@
       else if (['acc_admin', 'acc_partner', 'acc_org'].includes(state.route)) pageHtml = renderDaehungAccounts(state.route);
       else if (state.route === 'settings') pageHtml = renderSettings();
       else if (state.route === 'notices') pageHtml = renderNotices();
+      else if (state.route === 'new_case') pageHtml = renderNewCasePage();
+      else if (state.route === 'new_case_wizard') pageHtml = renderNewCaseWizardPage();
+      else if (state.route === 'claim_detail') pageHtml = renderClaimDetailPage();
+      else if (state.route === 'report_edit') pageHtml = renderReportEditPage();
+      else if (state.route === 'estimate_edit') pageHtml = renderEstimateEditPage();
 
       root.innerHTML = renderShell(pageHtml);
       if (window.lucide) lucide.createIcons();
