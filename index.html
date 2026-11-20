@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>대흥이엔씨 - 시스템 로그인</title>
+    <style>
+        body { font-family: 'Malgun Gothic', sans-serif; background: #f4f6f9; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .login-box { background: #fff; padding: 40px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 350px; text-align: center; }
+        h2 { margin-top: 0; color: #0056b3; }
+        .info-text { font-size: 13px; color: #666; margin-bottom: 25px; }
+        input[type="text"], input[type="password"] { width: 100%; padding: 12px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 14px; }
+        .btn-login { width: 100%; padding: 14px; background: #0056b3; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 15px; transition: background 0.2s; }
+        .btn-login:hover { background: #004494; }
+        .test-accounts { margin-top: 25px; text-align: left; background: #f8f9fa; padding: 15px; border-radius: 4px; font-size: 12px; color: #555; line-height: 1.6; border: 1px dashed #ccc; }
+    </style>
+</head>
+<body>
+
+<div class="login-box">
+    <h2>대흥이엔씨 시스템</h2>
+    <p class="info-text">통합 복구 관리 시스템</p>
+    
+    <!-- 엔터키를 쳐도 로그인이 작동하도록 onkeypress 이벤트 추가 -->
+    <input type="text" id="userId" placeholder="아이디" onkeypress="if(event.keyCode==13) login();">
+    <input type="password" id="userPw" placeholder="비밀번호" onkeypress="if(event.keyCode==13) login();">
+    
+    <button class="btn-login" onclick="login()">로그인</button>
+
+    <!-- 시연 시 참고용 테스트 계정 안내 -->
+    <div class="test-accounts">
+        <strong>[테스트 계정 안내]</strong><br>
+        👤 <strong>관리자 (대흥이엔씨):</strong> dhadmin / 1234<br>
+        📝 <strong>손해사정사 (접수):</strong> sontest / 1234<br>
+        👷‍♂️ <strong>시공파트너 (현장):</strong> matest / 1234
+    </div>
+</div>
+
+<script>
+    function login() {
+        // 입력된 아이디와 비밀번호 가져오기 (공백 제거)
+        const id = document.getElementById('userId').value.trim();
+        const pw = document.getElementById('userPw').value.trim();
+
+        // 권한별 접근 제어 및 라우팅 로직
+        if (id === 'dhadmin' && pw === '1234') {
+            // 관리자: 메인 대시보드로 이동
+            window.location.href = 'main_dashboard.html'; 
+        } else if (id === 'sontest' && pw === '1234') {
+            // 손해사정사: 신규 접수 폼으로 이동
+            window.location.href = 'intake_form.html'; 
+        } else if (id === 'matest' && pw === '1234') {
+            // 시공파트너사: 메인 대시보드로 똑같이 이동하도록 수정!
+            window.location.href = 'main_dashboard.html'; 
+        } else {
+            // 정보가 틀렸거나 없는 계정일 경우
+            alert('아이디 또는 비밀번호가 일치하지 않거나 접근 권한이 없습니다.');
+        }
+    }
+</script>
+
+</body>
+</html>
