@@ -110,7 +110,7 @@
         reportPlan: '파손 부재 철거 및 표준품셈 규격 자재 교체',
         completedDate: '',
         workDone: r.stage === '04' || r.stage === 'done',
-        photos: { before: [], during: [], after: [], docs: [] },
+        photos: (r.photos && typeof r.photos === 'object') ? { before: r.photos.before || [], during: r.photos.during || [], after: r.photos.after || [], docs: r.photos.docs || [] } : { before: [], during: [], after: [], docs: [] },
         estimateItems: [
           { id: 'ei1', cat: '재료비', item: '가드레일 보 (W형 3.2T)', unit: '본', qty: 3, price: 84000 },
           { id: 'ei2', cat: '노무비', item: '철공(특수용접)', unit: '인', qty: 2, price: 248000 },
@@ -149,7 +149,8 @@
         paid_amt: c.paidAmt,
         claim_stage: c.claimStage,
         claim_read_step: c.claimReadStep,
-        paid_status: c.paidStatus
+        paid_status: c.paidStatus,
+        photos: c.photos || { before: [], during: [], after: [], docs: [] }
       };
     }
 
@@ -191,6 +192,26 @@
         const { error } = await sbClient.from('cases').upsert(mapAppCaseToDb(c), { onConflict: 'case_no' });
         if (error) console.error('DB sync error:', error);
       } catch (e) {}
+    }
+
+    async function uploadImageToSupabaseStorage(dataUrl, fileName = 'photo.jpg') {
+      if (!dbConnected || !sbClient || !dataUrl || !dataUrl.startsWith('data:')) return dataUrl;
+      try {
+        const res = await fetch(dataUrl);
+        const blob = await res.blob();
+        const ext = (blob.type && blob.type.split('/')[1]) || 'jpg';
+        const safePath = `cases/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+        const { error } = await sbClient.storage.from('case-photos').upload(safePath, blob, {
+          contentType: blob.type || 'image/jpeg',
+          upsert: true
+        });
+        if (error) { console.error('Storage upload error:', error); return dataUrl; }
+        const { data } = sbClient.storage.from('case-photos').getPublicUrl(safePath);
+        return data?.publicUrl || dataUrl;
+      } catch (e) {
+        console.error('Storage upload exception:', e);
+        return dataUrl;
+      }
     }
 
     function openDbConfigModal() {
@@ -2292,7 +2313,7 @@
       files.forEach((file, idx) => {
         const reader = new FileReader();
         reader.onload = e => {
-          state.newCaseForm.files.push({
+          const item = {
             name: file.name,
             size: Math.round(file.size / 1024) + 'KB',
             url: e.target.result,
@@ -2300,7 +2321,13 @@
             annotations: [],
             caption: '',
             isImage: file.type.startsWith('image/')
-          });
+          };
+          state.newCaseForm.files.push(item);
+          if (dbConnected && item.isImage) {
+            uploadImageToSupabaseStorage(e.target.result, file.name).then(pubUrl => {
+              item.url = pubUrl; item.origUrl = pubUrl; render();
+            });
+          }
           const newIdx = state.newCaseForm.files.length - 1;
           render();
           if (idx === 0 && file.type.startsWith('image/')) {
@@ -3024,7 +3051,13 @@
       files.forEach((file, idx) => {
         const reader = new FileReader();
         reader.onload = e => {
-          c.photos[slot].push({ name: file.name, url: e.target.result, origUrl: e.target.result, annotations: [], caption: '' });
+          const item = { name: file.name, url: e.target.result, origUrl: e.target.result, annotations: [], caption: '' };
+          c.photos[slot].push(item);
+          if (dbConnected) {
+            uploadImageToSupabaseStorage(e.target.result, file.name).then(pubUrl => {
+              item.url = pubUrl; item.origUrl = pubUrl; syncCaseToDb(c); render();
+            });
+          }
           const newIdx = c.photos[slot].length - 1;
           render();
           if (idx === 0) openPhotoEditor(caseId, slot, newIdx);
@@ -3302,6 +3335,7 @@
       peState.dragging = false;
 
       const img = new Image();
+      img.crossOrigin = 'anonymous';
       img.onload = () => {
         peState.img = img;
         renderPhotoEditorModal();
@@ -3641,18 +3675,30 @@
       drawPeCanvas();
     }
 
-    function savePhotoEditor() {
+    async function savePhotoEditor() {
       const p = getPeTargetPhoto(peState.caseId, peState.slot, peState.index);
       const canvas = document.getElementById('pe-canvas');
       if (p && canvas) {
         peState.selectedIdx = -1;
         drawPeCanvas();
-        p.url = canvas.toDataURL('image/jpeg', 0.9);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
         p.annotations = JSON.parse(JSON.stringify(peState.annotations));
         p.caption = peState.caption;
+        closeModal();
+        if (dbConnected) showToast('사진을 Supabase Storage에 저장하는 중...', 'info');
+        p.url = await uploadImageToSupabaseStorage(dataUrl, p.name || 'edited.jpg');
+        if (!p.origUrl || p.origUrl.startsWith('data:')) {
+          p.origUrl = p.url;
+        }
+        if (peState.caseId !== '__NEW_CASE__') {
+          const c = state.cases.find(x => x.id === peState.caseId);
+          if (c) await syncCaseToDb(c);
+        }
+        showToast(dbConnected ? '편집한 사진이 Supabase Storage에 저장되었습니다!' : '편집한 사진과 산출식이 저장되었습니다.');
+        render();
+        return;
       }
       closeModal();
-      showToast('편집한 사진과 산출식이 저장되었습니다.');
       render();
     }
 
