@@ -43,8 +43,8 @@
     // 1-B. Supabase 실시간 DB 연동 설정 (URL/Key 입력 시 모든 PC 실시간 공유)
     // =========================================================================
     const SUPABASE_CONFIG = {
-      url: '',     // 배포 시 본인 Supabase Project URL 입력 (예: https://xxxx.supabase.co)
-      anonKey: ''  // 배포 시 본인 Supabase Anon/Publishable Key 입력
+      url: 'https://jfmxuhjrjoddakwuzxea.supabase.co',
+      anonKey: 'sb_publishable_Bd5ZAg8uoxIfIjOn2DZX1g_-t6qdB7D'
     };
     let sbClient = null;
     let dbConnected = false;
@@ -187,7 +187,22 @@
       }
     }
 
+    function saveLocalCases() {
+      try { localStorage.setItem('daehung_local_cases', JSON.stringify(state.cases)); } catch (e) {}
+    }
+
+    function restoreLocalCases() {
+      try {
+        const raw = localStorage.getItem('daehung_local_cases');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) state.cases = parsed.map(c => ensureCaseDetails(c));
+        }
+      } catch (e) {}
+    }
+
     async function syncCaseToDb(c) {
+      saveLocalCases();
       if (!dbConnected || !sbClient || !c) return;
       try {
         const { error } = await sbClient.from('cases').upsert(mapAppCaseToDb(c), { onConflict: 'case_no' });
@@ -1093,9 +1108,11 @@
                   <div class="text-sm font-semibold text-slate-900 mt-0.5">${escapeHtml(c.title)}</div>
                   <div class="text-xs text-slate-400">${escapeHtml(c.address)}</div>
                 </div>
-                <button type="button" onclick="openReportPage('${c.id}')" class="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-100 self-start sm:self-center cursor-pointer">
-                  현장 보고 수정
-                </button>
+                <div class="flex gap-1.5 self-start sm:self-center">
+                  ${c.partnerOrg === '미배정'
+                    ? `<button type="button" onclick="openAssignPartnerModal('${c.id}')" class="px-3 py-1.5 rounded-lg bg-blue-700 text-white text-xs font-semibold hover:bg-blue-800 cursor-pointer">업체 배정</button>`
+                    : `<button type="button" onclick="openReportPage('${c.id}')" class="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-100 cursor-pointer">현장 보고 수정</button>`}
+                </div>
               </div>
             `).join('')}
           </div>
@@ -1217,7 +1234,11 @@
                     <div class="font-semibold text-slate-900 mt-0.5">${escapeHtml(c.title)}</div>
                     <div class="text-xs text-slate-400">${escapeHtml(c.address)} · ${escapeHtml(c.plate)} · ${escapeHtml(c.facility)}</div>
                   </td>
-                  <td class="px-4 py-3.5 text-xs font-semibold text-slate-800">${escapeHtml(c.partnerOrg)}</td>
+                  <td class="px-4 py-3.5 text-xs font-semibold">
+                    ${c.partnerOrg === '미배정'
+                      ? `<span class="px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 font-bold">미배정</span>`
+                      : `<span class="text-slate-800">${escapeHtml(c.partnerOrg)}</span>`}
+                  </td>
                   <td class="px-4 py-3.5">
                     <div class="flex items-center gap-1">
                       ${Array.from({ length: 13 }, (_, i) => `<span class="w-2 h-2 rounded-full ${i < c.step13 ? 'bg-blue-600' : 'bg-slate-200'}"></span>`).join('')}
@@ -1228,10 +1249,10 @@
                     <div>${escapeHtml(c.dueDate)}</div>
                     ${c.overdue && c.stage !== 'done' ? `<span class="inline-block mt-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-700">예정일 지남</span>` : ''}
                   </td>
-                  <td class="px-4 py-3.5 text-right">
-                    <button type="button" onclick="openReportPage('${c.id}')" class="px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-semibold cursor-pointer">
-                      현장 보고 수정 →
-                    </button>
+                  <td class="px-4 py-3.5 text-right space-x-1">
+                    ${c.partnerOrg === '미배정'
+                      ? `<button type="button" onclick="openAssignPartnerModal('${c.id}')" class="px-3 py-1.5 rounded-lg bg-blue-700 text-white hover:bg-blue-800 text-xs font-semibold cursor-pointer">업체 배정 →</button>`
+                      : `<button type="button" onclick="openReportPage('${c.id}')" class="px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-semibold cursor-pointer">현장 보고 수정 →</button>`}
                   </td>
                 </tr>
               `).join('')}
@@ -2027,6 +2048,52 @@
       render();
     }
 
+    function openAssignPartnerModal(caseId) {
+      const c = ensureCaseDetails(state.cases.find(x => x.id === caseId));
+      if (!c) return;
+      openModal(`${c.id} 복구업체 배정`, `
+        <div class="space-y-3 text-xs">
+          <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
+            <div class="font-bold text-slate-900">${escapeHtml(c.title)}</div>
+            <div class="text-slate-500 mt-0.5">${escapeHtml(c.address)} · ${escapeHtml(c.insurerOrg)}</div>
+          </div>
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">배정할 복구업체 선택 (대흥 등록 파트너사)</label>
+            <select id="ap-partner" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm bg-white">
+              ${state.partnerCompanies.map(p => `<option value="${escapeHtml(p.name)}" ${c.partnerOrg===p.name?'selected':''}>${escapeHtml(p.name)} (${escapeHtml(p.grade)} · ${escapeHtml(p.phone)})</option>`).join('')}
+            </select>
+          </div>
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">복구 예정일</label>
+            <input id="ap-due" type="date" value="${escapeHtml(c.dueDate || '2026-11-30')}" class="w-full px-3 py-2 rounded-xl border border-slate-200 text-sm" />
+          </div>
+        </div>
+      `, `
+        <button type="button" onclick="closeModal()" class="px-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold cursor-pointer">취소</button>
+        <button type="button" onclick="saveAssignPartner('${c.id}')" class="px-4 py-2 rounded-xl bg-blue-700 text-white text-xs font-semibold cursor-pointer">배정 완료</button>
+      `);
+    }
+
+    function saveAssignPartner(caseId) {
+      const c = ensureCaseDetails(state.cases.find(x => x.id === caseId));
+      if (!c) return;
+      const pName = document.getElementById('ap-partner').value;
+      const due = document.getElementById('ap-due').value;
+      c.partnerOrg = pName;
+      c.dueDate = due;
+      c.step13 = Math.max(c.step13, 2);
+      c.partnerStep6 = 1;
+      c.partnerStatus = '담당자 지정 · 내 차례';
+      c.insurerTask = 'progress';
+      c.insurerAction = '상세 보기';
+      c.insurerGuide = `${pName}에 배정되어 현장 담당자 지정을 기다리고 있습니다.`;
+      c.history.unshift({ date: '2026-11-20', text: `복구업체 배정 (${pName})` });
+      syncCaseToDb(c);
+      closeModal();
+      showToast(`${pName}에 배정이 완료되었습니다.`);
+      render();
+    }
+
     function openAdminCaseEditModal(caseId) {
       const c = state.cases.find(x => x.id === caseId);
       if (!c) return;
@@ -2402,7 +2469,7 @@
         facility: f.selectedFacilities[0] || '가드레일',
         title: facTitle, address: addr, plate,
         insurerOrg: state.user.org || '버스공제조합',
-        partnerOrg: '한빛복구', partnerManager: '미지정',
+        partnerOrg: '미배정', partnerManager: '미지정',
         stage: '01', step13: 1, partnerStep6: 1, partnerStatus: '담당자 지정 · 내 차례',
         insurerTask: 'todo', insurerAction: '이어서 적기',
         insurerGuide: isDraft ? '임시 저장 상태입니다. 나머지 내용을 채워주세요.' : '접수됐습니다. 나머지 상세 내용을 보완할 수 있습니다.',
@@ -4265,6 +4332,7 @@
     }
 
     restoreSession();
+    restoreLocalCases();
     render();
     initSupabaseAndLoad(false);
   </script>
