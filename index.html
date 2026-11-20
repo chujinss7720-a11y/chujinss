@@ -8,6 +8,8 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
     body {
@@ -272,7 +274,7 @@
         accidentDate: '2026-11-20', insurerManager: '김민수', deductible: '', guaranteePct: '100',
         adjCorp: '', adjManager: '',
         facilityTitle: '', selectedFacilities: ['가드레일'], address: '', detailAddress: '', plate: '',
-        adminOrg: '', adminPhone: '',
+        adminOrg: '', adminPhone: '', lat: 37.5665, lng: 126.9780, mapMode: 'normal',
         victimType: '개인', victimName: '', victimPhone: '', insuredName: '', insuredPhone: '',
         accidentDesc: '', prepareReview: false, files: []
       },
@@ -409,6 +411,8 @@
       if (!c.victims) c.victims = [{ type: '개인', name: c.victimName || '', phone: c.victimPhone || '' }];
       if (c.detailAddress === undefined) c.detailAddress = '';
       if (!c.mapPin) c.mapPin = { x: 52, y: 46 };
+      if (c.lat === undefined) c.lat = 37.5665;
+      if (c.lng === undefined) c.lng = 126.9780;
       if (!c.mapMode) c.mapMode = 'normal';
       if (c.mapZoom === undefined) c.mapZoom = 1;
       return c;
@@ -2417,11 +2421,23 @@
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div><label class="block font-semibold mb-1">시설물 명칭·피해 내용</label><input id="nc-title" type="text" value="${escapeHtml(f.facilityTitle)}" oninput="state.newCaseForm.facilityTitle=this.value" placeholder="예: 강변북로 가드레일 10m 파손" class="w-full px-3 py-2 rounded-xl border border-slate-200" /></div>
                   <div><label class="block font-semibold mb-1">사고 차량번호</label><input id="nc-plate" type="text" value="${escapeHtml(f.plate)}" oninput="state.newCaseForm.plate=this.value" placeholder="예: 서울74사 8821" class="w-full px-3 py-2 rounded-xl border border-slate-200" /></div>
-                  <div class="sm:col-span-2">
-                    <label class="block font-semibold mb-1">피해 위치 (주소 또는 위치 설명)</label>
-                    <div class="flex gap-2">
-                      <input id="nc-addr" type="text" value="${escapeHtml(f.address)}" oninput="state.newCaseForm.address=this.value" placeholder="예: 서울 광진구 자양동 221-4" class="flex-1 px-3 py-2 rounded-xl border border-slate-200" />
-                      <button type="button" onclick="state.newCaseForm.address='서울 강남구 테헤란로 152 (현재 위치)'; render();" class="px-3 py-2 rounded-xl border border-slate-200 font-semibold hover:bg-slate-50 cursor-pointer shrink-0">현재 위치로 지정</button>
+                  <div class="sm:col-span-2 space-y-2.5">
+                    <label class="block font-semibold">피해 위치 (주소 또는 위치 설명)</label>
+                    <div class="flex flex-wrap gap-2">
+                      <input id="nc-addr" type="text" value="${escapeHtml(f.address)}" oninput="state.newCaseForm.address=this.value" placeholder="예: 서울 광진구 자양동 221-4 또는 분당수서로" class="flex-1 min-w-[200px] px-3 py-2 rounded-xl border border-slate-200" />
+                      <button type="button" onclick="searchAddressOnMap('newCaseForm', document.getElementById('nc-addr').value)" class="px-3 py-2 rounded-xl bg-slate-900 text-white font-semibold cursor-pointer shrink-0">주소 검색</button>
+                      <button type="button" onclick="locateMeOnMap('newCaseForm')" class="px-3 py-2 rounded-xl border border-slate-200 font-semibold hover:bg-slate-50 cursor-pointer shrink-0">현재 위치로 지정</button>
+                    </div>
+                    <div class="relative rounded-2xl border border-slate-200 overflow-hidden">
+                      <div id="nc-leaflet-map" style="height: 260px; width: 100%; z-index: 1;"></div>
+                      <div class="absolute top-2.5 right-2.5 z-[400] bg-white rounded-lg border border-slate-200 p-1 flex gap-1 text-[11px] font-semibold shadow-xs">
+                        <button type="button" onclick="setMapLayer('newCaseForm','normal')" class="px-2 py-1 rounded cursor-pointer ${f.mapMode==='normal'?'bg-blue-700 text-white':'text-slate-600'}">일반 지도</button>
+                        <button type="button" onclick="setMapLayer('newCaseForm','satellite')" class="px-2 py-1 rounded cursor-pointer ${f.mapMode==='satellite'?'bg-blue-700 text-white':'text-slate-600'}">위성 사진</button>
+                      </div>
+                      <div class="px-3 py-1.5 bg-slate-50 border-t border-slate-200 flex justify-between text-[11px] text-slate-500">
+                        <span>지도를 클릭하면 피해 위치 핀이 즉시 이동합니다.</span>
+                        <span class="font-mono">${Number(f.lat).toFixed(4)}, ${Number(f.lng).toFixed(4)}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -2673,30 +2689,23 @@
                 <label class="block text-xs font-semibold text-slate-700 mb-1">피해 위치 (주소 또는 위치 설명)</label>
                 <div class="flex gap-2">
                   <input id="wz-addr" type="text" value="${escapeHtml(c.address)}" placeholder="주소 검색 또는 직접 입력 (예: 분당수서로 터널 앞)" class="flex-1 px-3 py-2 rounded-xl border border-slate-200 text-sm" />
-                  <button type="button" onclick="showToast('주소 검색 결과를 지도에 반영했습니다.', 'info'); render();" class="px-3.5 py-2 rounded-xl bg-slate-900 text-white text-xs font-semibold cursor-pointer shrink-0">주소 검색</button>
+                  <button type="button" onclick="searchAddressOnMap('${c.id}', document.getElementById('wz-addr').value)" class="px-3.5 py-2 rounded-xl bg-slate-900 text-white text-xs font-semibold cursor-pointer shrink-0">주소 검색</button>
                 </div>
                 <div class="flex items-center justify-between mt-2">
-                  <button type="button" onclick="document.getElementById('wz-addr').value='서울 강남구 삼성동 159 (현위치)'; render();" class="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer">현재 위치로 지정</button>
+                  <button type="button" onclick="locateMeOnMap('${c.id}')" class="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer">현재 위치로 지정</button>
                   <span class="text-[11px] text-slate-400">지도를 눌러 핀을 찍을 수 있습니다.</span>
                 </div>
               </div>
-              <!-- 인터랙티브 지도 영역 -->
-              <div class="relative h-56 rounded-2xl border border-slate-200 overflow-hidden select-none cursor-crosshair ${c.mapMode === 'satellite' ? 'bg-slate-800' : 'bg-emerald-50'}" onclick="handleWizardMapClick(event, '${c.id}')">
-                <svg class="w-full h-full opacity-40 pointer-events-none" viewBox="0 0 400 200" preserveAspectRatio="none">
-                  <path d="M0 120 Q 120 90, 240 130 T 400 100" stroke="${c.mapMode === 'satellite' ? '#94a3b8' : '#3b82f6'}" stroke-width="6" fill="none" />
-                  <path d="M80 0 L 140 200 M 260 0 L 220 200" stroke="${c.mapMode === 'satellite' ? '#cbd5e1' : '#94a3b8'}" stroke-width="3" fill="none" />
-                </svg>
-                <div class="absolute -translate-x-1/2 -translate-y-full pointer-events-none transition-all" style="left:${c.mapPin.x}%; top:${c.mapPin.y}%;">
-                  <div class="px-2 py-0.5 rounded-md bg-rose-600 text-white text-[10px] font-bold shadow">피해 위치 핀</div>
-                  <div class="w-2.5 h-2.5 bg-rose-600 rotate-45 mx-auto -mt-1"></div>
+              <!-- 실시간 Leaflet 지도 영역 -->
+              <div class="relative rounded-2xl border border-slate-200 overflow-hidden">
+                <div id="wz-leaflet-map" style="height: 280px; width: 100%; z-index: 1;"></div>
+                <div class="absolute top-2.5 right-2.5 z-[400] bg-white rounded-lg border border-slate-200 p-1 flex gap-1 text-[11px] font-semibold shadow-xs">
+                  <button type="button" onclick="setMapLayer('${c.id}','normal')" class="px-2 py-1 rounded cursor-pointer ${c.mapMode==='normal'?'bg-blue-700 text-white':'text-slate-600'}">일반 지도</button>
+                  <button type="button" onclick="setMapLayer('${c.id}','satellite')" class="px-2 py-1 rounded cursor-pointer ${c.mapMode==='satellite'?'bg-blue-700 text-white':'text-slate-600'}">위성 사진</button>
                 </div>
-                <div class="absolute top-2.5 left-2.5 flex flex-col bg-white rounded-lg border border-slate-200 shadow-xs overflow-hidden" onclick="event.stopPropagation()">
-                  <button type="button" onclick="state.cases.find(x=>x.id==='${c.id}').mapZoom=Math.min(3,(state.cases.find(x=>x.id==='${c.id}').mapZoom||1)+1); render();" class="px-2.5 py-1 text-xs font-bold hover:bg-slate-100 cursor-pointer">+</button>
-                  <button type="button" onclick="state.cases.find(x=>x.id==='${c.id}').mapZoom=Math.max(1,(state.cases.find(x=>x.id==='${c.id}').mapZoom||1)-1); render();" class="px-2.5 py-1 text-xs font-bold border-t border-slate-200 hover:bg-slate-100 cursor-pointer">-</button>
-                </div>
-                <div class="absolute top-2.5 right-2.5 bg-white rounded-lg border border-slate-200 p-1 flex gap-1 text-[11px] font-semibold shadow-xs" onclick="event.stopPropagation()">
-                  <button type="button" onclick="state.cases.find(x=>x.id==='${c.id}').mapMode='normal'; render();" class="px-2 py-1 rounded cursor-pointer ${c.mapMode==='normal'?'bg-blue-700 text-white':'text-slate-600'}">일반 지도</button>
-                  <button type="button" onclick="state.cases.find(x=>x.id==='${c.id}').mapMode='satellite'; render();" class="px-2 py-1 rounded cursor-pointer ${c.mapMode==='satellite'?'bg-blue-700 text-white':'text-slate-600'}">위성 사진</button>
+                <div class="px-3 py-1.5 bg-slate-50 border-t border-slate-200 flex justify-between text-[11px] text-slate-500">
+                  <span>지도를 클릭해 핀 위치를 지정하세요.</span>
+                  <span class="font-mono">${Number(c.lat).toFixed(4)}, ${Number(c.lng).toFixed(4)}</span>
                 </div>
               </div>
               <div>
@@ -3618,6 +3627,131 @@
       render();
     }
 
+    // =========================================================================
+    // 10-D. 실시간 Leaflet 지도 관리 (ArcGIS 일반/위성 타일 + 주소 검색 + 현위치)
+    // =========================================================================
+    let activeLeafletMap = null;
+    let activeLeafletMarker = null;
+
+    const KR_PRESET_COORDS = [
+      { kw: '강남', lat: 37.5172, lng: 127.0473 },
+      { kw: '삼성', lat: 37.5088, lng: 127.0631 },
+      { kw: '테헤란', lat: 37.5048, lng: 127.0489 },
+      { kw: '광진', lat: 37.5385, lng: 127.0824 },
+      { kw: '자양', lat: 37.5349, lng: 127.0714 },
+      { kw: '여의', lat: 37.5219, lng: 126.9245 },
+      { kw: '구로', lat: 37.4954, lng: 126.8874 },
+      { kw: '서대문', lat: 37.5791, lng: 126.9368 },
+      { kw: '노원', lat: 37.6542, lng: 127.0568 },
+      { kw: '분당', lat: 37.3827, lng: 127.1189 },
+      { kw: '성남', lat: 37.4200, lng: 127.1267 },
+      { kw: '수원', lat: 37.2636, lng: 127.0286 },
+      { kw: '인천', lat: 37.4563, lng: 126.7052 },
+      { kw: '부산', lat: 35.1796, lng: 129.0756 },
+      { kw: '대구', lat: 35.8714, lng: 128.6014 }
+    ];
+
+    function getMapTargetObj(targetId) {
+      if (targetId === 'newCaseForm') return state.newCaseForm;
+      return ensureCaseDetails(state.cases.find(x => x.id === targetId));
+    }
+
+    function destroyActiveMap() {
+      if (activeLeafletMap) {
+        try { activeLeafletMap.remove(); } catch (e) {}
+        activeLeafletMap = null;
+        activeLeafletMarker = null;
+      }
+    }
+
+    function initLocationMap(containerId, targetId) {
+      const el = document.getElementById(containerId);
+      const obj = getMapTargetObj(targetId);
+      if (!el || !obj || !window.L) return;
+      destroyActiveMap();
+      const lat = Number(obj.lat || 37.5665);
+      const lng = Number(obj.lng || 126.9780);
+      activeLeafletMap = L.map(el).setView([lat, lng], 15);
+      const tileUrl = obj.mapMode === 'satellite'
+        ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+        : 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}';
+      L.tileLayer(tileUrl, { maxZoom: 19, attribution: 'Esri' }).addTo(activeLeafletMap);
+      activeLeafletMarker = L.marker([lat, lng]).addTo(activeLeafletMap);
+
+      activeLeafletMap.on('click', e => {
+        obj.lat = e.latlng.lat;
+        obj.lng = e.latlng.lng;
+        if (activeLeafletMarker) activeLeafletMarker.setLatLng(e.latlng);
+        if (!obj.address || obj.address === '위치 추후 보완') {
+          obj.address = `지도 핀 지정 (${obj.lat.toFixed(4)}, ${obj.lng.toFixed(4)})`;
+        }
+        render();
+      });
+    }
+
+    function setMapLayer(targetId, mode) {
+      const obj = getMapTargetObj(targetId);
+      if (obj) { obj.mapMode = mode; render(); }
+    }
+
+    async function searchAddressOnMap(targetId, query) {
+      const obj = getMapTargetObj(targetId);
+      const q = (query || '').trim();
+      if (!obj || !q) { showToast('검색할 주소나 지역명을 입력해 주세요.', 'error'); return; }
+      obj.address = q;
+      // 1) ArcGIS World Geocoder 시도
+      try {
+        const res = await fetch('https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer/findAddressCandidates?f=json&maxLocations=1&SingleLine=' + encodeURIComponent(q));
+        if (res.ok) {
+          const data = await res.json();
+          if (data.candidates && data.candidates.length > 0) {
+            obj.lat = data.candidates[0].location.y;
+            obj.lng = data.candidates[0].location.x;
+            showToast('지도에서 위치를 찾았습니다.');
+            render();
+            return;
+          }
+        }
+      } catch (e) {}
+      // 2) 국내 주요 지역 키워드 폴백
+      const hit = KR_PRESET_COORDS.find(p => q.includes(p.kw));
+      if (hit) {
+        obj.lat = hit.lat;
+        obj.lng = hit.lng;
+        showToast(`'${hit.kw}' 인근 좌표로 지도를 이동했습니다.`);
+      } else {
+        showToast('입력한 주소를 저장했습니다. 세부 위치는 지도를 클릭해 핀을 옮겨 주세요.', 'info');
+      }
+      render();
+    }
+
+    function locateMeOnMap(targetId) {
+      const obj = getMapTargetObj(targetId);
+      if (!obj) return;
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          pos => {
+            obj.lat = pos.coords.latitude;
+            obj.lng = pos.coords.longitude;
+            obj.address = `현재 위치 (${obj.lat.toFixed(4)}, ${obj.lng.toFixed(4)})`;
+            showToast('현재 위치가 지도에 반영되었습니다.');
+            render();
+          },
+          () => {
+            obj.lat = 37.5665;
+            obj.lng = 126.9780;
+            obj.address = '서울 중구 세종대로 110 (기본 위치)';
+            showToast('브라우저 위치 권한이 없어 서울 시청 기준으로 표시합니다.', 'info');
+            render();
+          },
+          { timeout: 4000 }
+        );
+      } else {
+        obj.lat = 37.5665; obj.lng = 126.9780;
+        render();
+      }
+    }
+
     function destroyCharts() {
       chartInstances.forEach(ch => ch.destroy());
       chartInstances = [];
@@ -3665,6 +3799,7 @@
 
     function render() {
       destroyCharts();
+      destroyActiveMap();
       const root = document.getElementById('app');
       if (!state.user) {
         root.innerHTML = renderLogin();
@@ -3704,6 +3839,8 @@
       root.innerHTML = renderShell(pageHtml);
       if (window.lucide) lucide.createIcons();
       if (state.route === 'home' && state.user.role === 'daehung') initHomeCharts();
+      if (state.route === 'new_case' && state.newCaseForm.openSec2) initLocationMap('nc-leaflet-map', 'newCaseForm');
+      if (state.route === 'new_case_wizard' && state.wizardStep === 2) initLocationMap('wz-leaflet-map', state.activeCaseId);
     }
 
     render();
