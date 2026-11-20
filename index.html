@@ -2256,15 +2256,29 @@
     }
 
     function handleNewCaseFiles(input) {
-      if (!input.files) return;
-      Array.from(input.files).forEach(file => {
+      if (!input.files || !input.files.length) return;
+      const files = Array.from(input.files);
+      files.forEach((file, idx) => {
         const reader = new FileReader();
         reader.onload = e => {
-          state.newCaseForm.files.push({ name: file.name, size: Math.round(file.size / 1024) + 'KB', url: e.target.result });
+          state.newCaseForm.files.push({
+            name: file.name,
+            size: Math.round(file.size / 1024) + 'KB',
+            url: e.target.result,
+            origUrl: e.target.result,
+            annotations: [],
+            caption: '',
+            isImage: file.type.startsWith('image/')
+          });
+          const newIdx = state.newCaseForm.files.length - 1;
           render();
+          if (idx === 0 && file.type.startsWith('image/')) {
+            openPhotoEditor('__NEW_CASE__', 'docs', newIdx);
+          }
         };
         reader.readAsDataURL(file);
       });
+      input.value = '';
     }
 
     function toggleFacilityChip(fac) {
@@ -2353,9 +2367,11 @@
           ${f.files.length > 0 ? `
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
               ${f.files.map((fl, i) => `
-                <div class="p-2 rounded-xl border border-slate-200 bg-slate-50 text-xs relative">
-                  <img src="${fl.url}" alt="" class="w-full h-24 object-cover rounded-lg mb-1.5 bg-slate-200" />
+                <div class="p-2 rounded-xl border border-slate-200 bg-slate-50 text-xs relative flex flex-col gap-1.5">
+                  <img src="${fl.url}" alt="" class="w-full h-24 object-cover rounded-lg bg-slate-200 cursor-pointer" onclick="openPhotoEditor('__NEW_CASE__','docs',${i})" />
                   <div class="truncate font-medium text-slate-700">${escapeHtml(fl.name)}</div>
+                  ${fl.caption ? `<div class="text-[11px] text-slate-500 truncate">${escapeHtml(fl.caption)}</div>` : ''}
+                  <button type="button" onclick="openPhotoEditor('__NEW_CASE__','docs',${i})" class="w-full py-1 rounded-lg bg-white border border-blue-200 text-blue-700 hover:bg-blue-50 text-[11px] font-semibold cursor-pointer">치수·글씨</button>
                   <button type="button" onclick="state.newCaseForm.files.splice(${i},1); render();" class="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-slate-900/70 text-white text-[11px] cursor-pointer">×</button>
                 </div>
               `).join('')}
@@ -2977,6 +2993,7 @@
         };
         reader.readAsDataURL(file);
       });
+      input.value = '';
     }
 
     function renderReportEditPage() {
@@ -3223,9 +3240,14 @@
       return PE_GUIDES[peState.tool] || '';
     }
 
-    function openPhotoEditor(caseId, slot, index) {
+    function getPeTargetPhoto(caseId, slot, index) {
+      if (caseId === '__NEW_CASE__') return state.newCaseForm.files[index];
       const c = ensureCaseDetails(state.cases.find(x => x.id === caseId));
-      const p = c?.photos?.[slot]?.[index];
+      return c?.photos?.[slot]?.[index];
+    }
+
+    function openPhotoEditor(caseId, slot, index) {
+      const p = getPeTargetPhoto(caseId, slot, index);
       if (!p) return;
       peState.caseId = caseId;
       peState.slot = slot;
@@ -3582,8 +3604,7 @@
     }
 
     function savePhotoEditor() {
-      const c = state.cases.find(x => x.id === peState.caseId);
-      const p = c?.photos?.[peState.slot]?.[peState.index];
+      const p = getPeTargetPhoto(peState.caseId, peState.slot, peState.index);
       const canvas = document.getElementById('pe-canvas');
       if (p && canvas) {
         peState.selectedIdx = -1;
